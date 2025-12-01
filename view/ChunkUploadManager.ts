@@ -390,7 +390,6 @@ export class ChunkedUploadManager {
   }
 
   // Callbacks
-  // onProgress?: (data: ProgressData) => void;
   onStart?: (data: StartData) => void;
   onProgress?: (data: ProgressData) => void;
   onEnd?: (data: EndData) => void;
