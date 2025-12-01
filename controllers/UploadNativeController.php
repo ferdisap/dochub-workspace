@@ -3,15 +3,9 @@
 namespace Dochub\Controller;
 
 use Dochub\Job\ProcessZipJob;
-use Dochub\Upload\Services\CacheCleanup;
-use Dochub\Upload\Services\RedisCleanup;
+use Dochub\Upload\Cache\NativeUploadCache;
 use Illuminate\Http\Request;
-use Illuminate\Queue\Events\JobQueued;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\Queue;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Redis;
 
 /**
@@ -22,7 +16,12 @@ use Illuminate\Support\Facades\Redis;
  */
 class UploadNativeController extends UploadController
 {
-  protected $cacheDriver = 'file';
+  // protected $cacheDriver = 'file';
+  protected NativeUploadCache $cache;
+
+  public function __construct() {
+    $this->cache = new NativeUploadCache();
+  }
   /**
    * POST /upload/chunk
    * Terima chunk dengan streaming I/O (low memory)
@@ -67,7 +66,7 @@ class UploadNativeController extends UploadController
       'last_chunk' => $chunkIndex,
     ]);
 
-    // $metadata = Cache::driver($this->cacheDriver)->get("upload:{$uploadId}");
+    // $metadata = $this->cache->get($uploadId);
     return response()->json([
       'chunk_index' => $chunkIndex,
       'status' => 'uploaded',
@@ -88,10 +87,10 @@ class UploadNativeController extends UploadController
     ]);
 
     $uploadId = $request->upload_id;
-    $fileName = $request->file_name;
+    // $fileName = $request->file_name;
 
     // Cek metadata
-    $metadata = Cache::driver($this->cacheDriver)->get("upload:{$uploadId}");
+    $metadata = $this->cache->get($uploadId);
     if (!$metadata) {
       return response()->json(['error' => 'Upload not found'], 404);
     }
@@ -106,7 +105,7 @@ class UploadNativeController extends UploadController
     // $metadata = json_decode($metadata, true);
     // $metadata['upload_dir'] = $uploadDir;
     // $metadata = json_encode($metadata);
-    // Cache::driver($this->cacheDriver)->set("upload:{$uploadId}", $metadata, 3600);
+    // $this->cache->set($uploadId, $metadata, 3600);
 
     // $chunks = [];
     // for ($i = 0; $i < $data['total_chunks']; $i++) {
@@ -147,8 +146,8 @@ class UploadNativeController extends UploadController
     // Update metadata
     $data['job_id'] = $jobId;
     $data['status'] = 'processing';
-    // Redis::setex("upload:{$uploadId}", 3600, json_encode($data));
-    Cache::driver($this->cacheDriver)->set("upload:{$uploadId}", json_encode($data), 3600);
+    // Redis::setex($uploadId, 3600, json_encode($data));
+    $this->cache->set($uploadId, json_encode($data), 3600);
 
     return response()->json([
       'upload_id' => $uploadId,
@@ -188,10 +187,10 @@ class UploadNativeController extends UploadController
   {
     // Coba Redis dulu (prioritas tinggi)
     // $cacheDriver = 'redis';
-    // $metadata = \Illuminate\Support\Facades\Redis::get("upload:{$id}");
+    // $metadata = \Illuminate\Support\Facades\Redis::get($id);
 
     // Jika tidak ada di Redis, coba cache
-    $metadata = Cache::driver($this->cacheDriver)->get("upload:{$id}");
+    $metadata = $this->cache->get($id);
 
     if (!$metadata) {
       return response()->json(['error' => 'Upload not found'], 404);
@@ -200,18 +199,17 @@ class UploadNativeController extends UploadController
     $data = json_decode($metadata, true);
 
     // // 🔑 Auto-cleanup dari cache jika sudah selesai
-    $wasCleaned = false;
+    // $wasCleaned = false;
+    $wasCleaned = $this->cache->cleanupIfCompleted($id, $data);
 
     // // Cek Redis dulu
-    if ($this->cacheDriver === 'redis') {
-      $wasCleaned = RedisCleanup::cleanupIfCompleted($id, $data);
-      // $wasCleaned = true;
-    }
+    // if ($this->cache->driver() === 'redis') {
+      // $wasCleaned = RedisCleanup::cleanupIfCompleted($id, $data);
+    // }
     // Jika tidak ada di Redis, cek cache
-    else {
-      $wasCleaned = CacheCleanup::cleanupIfCompleted($id, $data);
-      // $wasCleaned = true;
-    }
+    // else {
+      // $wasCleaned = CacheCleanup::cleanupIfCompleted($id, $data);
+    // }
 
     if ($wasCleaned) {
       return response()->json([
@@ -235,20 +233,20 @@ class UploadNativeController extends UploadController
     ]);
   }
 
-  private function isValidZip(string $path): bool
-  {
-    if (!file_exists($path) || filesize($path) < 22) return false;
+  // private function isValidZip(string $path): bool
+  // {
+  //   if (!file_exists($path) || filesize($path) < 22) return false;
 
-    $header = file_get_contents($path, false, null, 0, 4);
-    return in_array($header, ["PK\x03\x04", "PK\x05\x06", "PK\x07\x08"], true);
-  }
+  //   $header = file_get_contents($path, false, null, 0, 4);
+  //   return in_array($header, ["PK\x03\x04", "PK\x05\x06", "PK\x07\x08"], true);
+  // }
 
   /**
    * Update metadata upload
    */
   private function updateUploadMetadata(string $uploadId, array $data): void
   {
-    $metadata = Cache::driver($this->cacheDriver)->get("upload:{$uploadId}");
+    $metadata = $this->cache->get($uploadId);
     $existing = $metadata ? json_decode($metadata, true) : [];
 
     $updated = array_merge($existing, $data, [
@@ -257,7 +255,7 @@ class UploadNativeController extends UploadController
     ]);
 
     // 🔑 TTL dinamis berdasarkan , agar ke hapus otomatis
-    $ttl = 3600; // Default 1 jam
+    $ttl = env('upload.cache.ttl', 86400); // 24jam
 
     // Jika upload sudah 100% dan ada job_id → perpendek TTL
     $progress = $updated['total_chunks'] ?
@@ -266,11 +264,11 @@ class UploadNativeController extends UploadController
     if ($progress >= 1.0 && isset($updated['job_id'])) {
       $ttl = 300; // 5 menit
     }
-    Cache::driver($this->cacheDriver)->set("upload:{$uploadId}", json_encode($updated), $ttl);
+    $this->cache->set($uploadId, json_encode($updated), $ttl);
 
 
     // jika pakai redis
-    // $metadata = Redis::get("upload:{$uploadId}");
+    // $metadata = Redis::get($uploadId);
     // $existing = $metadata ? json_decode($metadata, true) : [];
 
     // $updated = array_merge($existing, $data, [
@@ -288,7 +286,7 @@ class UploadNativeController extends UploadController
     // if ($progress >= 1.0 && isset($updated['job_id'])) {
     //   $ttl = 300; // 5 menit
     // }
-    // Redis::setex("upload:{$uploadId}", $ttl, json_encode($updated));
+    // Redis::setex($uploadId, $ttl, json_encode($updated));
   }
 
   /**
@@ -358,7 +356,7 @@ class UploadNativeController extends UploadController
   // Di controller admin
   public function getUploadStats()
   {
-    $pattern = 'upload:native_*';
+    $pattern = 'native_*';
     $cursor = 0;
     $stats = [
       'total' => 0,

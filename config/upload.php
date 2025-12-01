@@ -14,6 +14,19 @@ return [
 
   /*
     |--------------------------------------------------------------------------
+    | Default Cache store
+    |--------------------------------------------------------------------------
+    | jika pakai tus, bisa di ovveride manual pakai use_redis
+    */
+  'cache' => [
+    "driver" => env('DOCHUB_CACHE_STORE', 'file'),
+    "ttl" => env('UPLOAD_CACHE_TTL', 86400), // 24 jam
+    "prefix" => env('TUS_CACHE_PREFIX', 'dhub:'),
+    // 'scan_count' => env('UPLOAD_CACHE_SCAN_COUNT', 100),
+  ],
+
+  /*
+    |--------------------------------------------------------------------------
     | Environment-Based Strategy
     |--------------------------------------------------------------------------
     */

@@ -3,6 +3,7 @@
 namespace Dochub\Job;
 
 use App\Services\RedisCleanupService;
+use Dochub\Upload\Cache\NativeUploadCache;
 use Dochub\Upload\Services\CacheCleanup;
 use Dochub\Workspace\Blob;
 use Dochub\Workspace\Enums\ManifestSourceType;
@@ -21,6 +22,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\Events\JobQueued;
 use Illuminate\Support\Facades\Event;
+use TusPhp\Cache\Cacheable;
 
 class ProcessZipJob implements ShouldQueue
 {
@@ -31,6 +33,8 @@ class ProcessZipJob implements ShouldQueue
   public int $id = 0;
 
   public string $uploadId;
+
+  protected NativeUploadCache $cache;
 
   /**
    * Create a new job instance.
@@ -95,8 +99,8 @@ class ProcessZipJob implements ShouldQueue
   {
     if (!$this->uploadId) return;
 
-    // $current = Redis::get("upload:{$this->uploadId}");
-    $current = Cache::driver($this->cache_driver)->get("upload:{$this->uploadId}");
+    // $current = Redis::get("$this->uploadId}");
+    $current = $this->cache->get($this->uploadId);
     $metadata = $current ? json_decode($current, true) : [];
 
     $update = array_merge($metadata, [
@@ -107,8 +111,8 @@ class ProcessZipJob implements ShouldQueue
 
     // TTL dinamis
     $ttl = $status === 'completed' ? 300 : 3600;
-    Cache::driver($this->cache_driver)->set("upload:{$this->uploadId}", json_encode($update), $ttl);
-    // Redis::setex("upload:{$this->uploadId}", $ttl, json_encode($update));
+    $this->cache->set($this->uploadId, json_encode($update), $ttl);
+    // Redis::setex(this->uploadId, $ttl, json_encode($update));
   }
 
   /**
@@ -319,6 +323,8 @@ class ProcessZipJob implements ShouldQueue
   // public function handle(): array
   public function handle()
   {
+    $this->cache = new NativeUploadCache();
+
     $metadata = json_decode($this->metadata, true);
     // $this->metadata = json_decode($this->metadata, true);
     $fileName = $metadata['file_name'];
@@ -365,12 +371,16 @@ class ProcessZipJob implements ShouldQueue
 
       // 🔑 Auto-cleanup jika sync mode atau sudah selesai
       if ($this->uploadId) {
-        // Cache::driver($this->cache_driver)->delete($this->uploadId);
-        CacheCleanup::driver($this->cache_driver);
-        CacheCleanup::cleanupUpload($this->uploadId, [
+        // $this->cache->delete($this->uploadId);
+        $this->cache->cleanupUpload($this->uploadId, [
           'status' => 'completed',
           'upload_id' => $this->uploadId,
         ]);
+        // CacheCleanup::driver($this->cache_driver);
+        // CacheCleanup::cleanupUpload($this->uploadId, [
+        //   'status' => 'completed',
+        //   'upload_id' => $this->uploadId,
+        // ]);
       }
 
       Log::info("ProcessZipJob completed", $result);
@@ -385,12 +395,17 @@ class ProcessZipJob implements ShouldQueue
 
       // Cleanup saat error
       if ($this->uploadId) {
-        CacheCleanup::driver($this->cache_driver);
-        CacheCleanup::cleanupUpload($this->uploadId, [
+        $this->cache->cleanupUpload($this->uploadId, [
           'status' => 'failed',
           'upload_id' => $this->uploadId,
-          'error' => $e->getMessage()
+          'error' => $e->getMessage()          
         ]);
+        // CacheCleanup::driver($this->cache_driver);
+        // CacheCleanup::cleanupUpload($this->uploadId, [
+        //   'status' => 'failed',
+        //   'upload_id' => $this->uploadId,
+        //   'error' => $e->getMessage()
+        // ]);
       }
 
       Log::error("ProcessZipJob failed", [
@@ -467,7 +482,7 @@ class ProcessZipJob implements ShouldQueue
 
   //     // 🔑 Auto-cleanup jika sync mode atau sudah selesai
   //     if ($this->uploadId) {
-  //       // Cache::driver($this->cache_driver)->delete($this->uploadId);
+  //       // $this->cache->delete($this->uploadId);
   //       CacheCleanup::driver($this->cache_driver);
   //       CacheCleanup::cleanupUpload($this->uploadId, [
   //         'status' => 'completed',

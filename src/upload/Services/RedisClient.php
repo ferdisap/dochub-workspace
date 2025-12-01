@@ -4,6 +4,9 @@ namespace Dochub\Upload\Services;
 
 use Illuminate\Support\Facades\App;
 
+/**
+ * @deprecated
+ */
 class RedisClient
 {
   private static ?\Redis $phpredis = null;

@@ -1,6 +1,6 @@
 <?php
 
-namespace Dochub\Upload\Services;
+namespace Dochub\Upload\Cache;
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
@@ -9,17 +9,14 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 
-/**
- * @deprecated
- */
-class CacheCleanup
+intercae CacheCleanup
 {
-  protected static $driver;
+  // protected static $driver;
 
   /**
    * Pola kunci cache untuk upload
    */
-  private const UPLOAD_KEY_PATTERN = 'upload:*';
+  // private const UPLOAD_KEY_PATTERN = 'upload:*';
 
   public static function driver(string $driver)
   {

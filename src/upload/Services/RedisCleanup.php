@@ -5,6 +5,9 @@ namespace Dochub\Upload\Services;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 
+/**
+ * @deprecated
+ */
 class RedisCleanup
 {
   /**

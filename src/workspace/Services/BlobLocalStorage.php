@@ -101,17 +101,17 @@ class BlobLocalStorage
     if (!is_file($filePath)) {
       throw new RuntimeException("File not found: {$filePath}");
     }
-
+    
     $size = filesize($filePath);
     if ($size === false) {
       throw new RuntimeException("Cannot get size of: {$filePath}");
     }
-
+    
     $metadata["original_size_bytes"] = $size;
-
+    
     // 1. Dapatkan hash (dari third-party atau hitung sendiri)
     $hash = $this->resolveHash($filePath, $providedHash, $size);
-
+    
     // 2. Cek deduplikasi: jika blob sudah ada, langsung return
     if ($this->blobExists($hash)) {
       return $hash;
