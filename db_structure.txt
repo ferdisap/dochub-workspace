@@ -1,0 +1,249 @@
+<!-- 
+  dochub_workspaces
+  │
+  ├── dochub_merges (1 workspace → banyak merge)
+  │   │
+  │   └── dochub_files (1 merge → banyak file state)
+  │       ├── blob_hash → dochub_blobs.hash
+  │       └── old_blob_hash → dochub_blobs.hash (nullable)
+  │
+  └── dochub_merge_sessions (workspace → session → result_merge_id)
+-->
+
+<!-- contoh rollback workspace W1 ke merge M2. -->
+<!-- $files = DochubFile::where('merge_id', 'M2')
+                 ->where('workspace_id', $workspaceId)
+                 ->get(); -->
+
+<!-- 
+SARAN:
+1.  Blob Storage
+Simpan di storage/blobs/{first-2-chars}/{hash} → hindari 1 folder terlalu penuh (e.g., blobs/a1/a1b2c3...)
+2. Backup
+dochub_blobs + storage/blobs/ → semua workspace bisa direkonstruksi
+3. GC (Garbage Collector) Buat command:
+php artisan dochub:gc
+yang hapus blob tanpa referensi di dochub_files
+4. Indexing Tambahkan composite index: 
+$table->index(['workspace_id', 'merge_id', 'relative_path']);
+-->                 
+
+<!-- model Workspace -->
+Schema::create('dochub_workspaces', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('owner_id')->constrained('users');
+    $table->string('name')->unique();
+    $table->string('visibility')->default('private'); // 'public', 'private'
+    $table->softDeletes(); // untuk archive tanpa hapus history
+    $table->timestamps();
+});
+
+<!-- model Merge -->
+Schema::create('dochub_merges', function (Blueprint $table) {
+    $table->uuid()->primary(); // ← gunakan UUID sebagai ID (lebih aman untuk sync/distribusi)
+    $table->foreignUuid('prev_merge_id')->nullable()->constrained('dochub_merges');
+    $table->foreignId('workspace_id')->constrained('dochub_workspaces');
+    $table->foreignId('manifest_id')->nullable()->constrained('dochub_manifests');
+    $table->string('label')->nullable(); // 'v1.2.3'
+    $table->text('message')->nullable();
+    $table->timestamp('merged_at'); // kapan state ini direkam (immutable)
+    $table->timestamps();
+});
+
+<!-- model Files -->
+Schema::create('dochub_files', function (Blueprint $table) {
+    $table->id();
+    $table->foreignUuid('merge_id')->constrained('dochub_merges'); // state di merge ini
+    $table->foreignId('workspace_id')->constrained('dochub_workspaces');
+    
+    $table->string('relative_path'); // e.g., 'config/app.php'
+    $table->string('blob_hash', 64); // isi file → pointer ke blobs/
+    
+    // opsional: untuk lacak perubahan
+    $table->string('old_blob_hash', 64)->nullable(); // null = added
+
+    // Jika action = 'deleted' → hapus file dari workspace live.
+    // Jika action = 'added' → abaikan (karena di M2 belum ada).
+    // Jika action = 'updated' → symlink blobs/{$file->blob_hash} ke $path.
+    $table->string('action')->default('updated') // 'added', 'updated', 'deleted'
+        ->comment("How this file changed in this merge");
+    
+    $table->unsignedBigInteger('size_bytes');
+    $table->timestamp('file_modified_at'); // mtime dari file asli
+    
+    $table->unique(['merge_id', 'relative_path']); // pastikan tidak duplikat path per merge
+    $table->index(['workspace_id', 'relative_path']);
+    $table->index('blob_hash');
+});
+<!-- fitur Changelog -->
+<!-- SELECT relative_path, action, 
+       old_blob_hash, blob_hash 
+FROM dochub_files 
+WHERE merge_id = '...' 
+ORDER BY relative_path; -->
+<!-- Schema::create('dochub_files', function (Blueprint $table) {
+  $table->id();
+  $table->bigInteger('dochub_merge_id');
+  $table->bigInteger('dochub_blob_references_id'); // id
+}); -->
+<!-- rekonstruksi workspace -->
+<!-- $files = DochubFile::where('merge_id', $mergeId)->get();
+foreach ($files as $f) {
+    symlink(storage_path("blobs/{$f->blob_hash}"), $workspacePath . '/' . $f->relative_path);
+} -->
+
+<!-- model Session -->
+Schema::create('dochub_merge_sessions', function (Blueprint $table) {
+  $table->id();
+  $table->foreignId('target_workspace_id')->constrained('workspaces'); // tujuan merge
+  $table->foreignUuid('result_merge_id')->nullable()->constrained('dochub_merges'); // ← tambahkan!
+  $table->string('source_identifier'); // e.g., 'remote:client-abc', 'upload:20251126-abc.zip'
+  $table->string('source_type')->default('remote'); // 'remote', 'upload', 'manual'
+
+  $table->timestamp('started_at');
+  $table->timestamp('completed_at')->nullable();
+  $table->string('status')->default('pending'); // pending, scanning, conflicts, resolved, applied, failed
+
+  $table->json('metadata')->nullable(); // info dari third-party: version, timestamp, etc.
+  $table->foreignId('initiated_by_user_id')->constrained('users');
+
+  $table->timestamps();
+});
+
+<!-- model Blob -->
+Schema::create('dochub_blobs', function (Blueprint $table) {
+    $table->string('hash', 64)->primary(); // SHA-256 isi file asli (tidak terkompresi!)
+    
+    $table->string('mime_type')->nullable(); // 'application/pdf', 'video/mp4'
+    $table->boolean('is_binary')->default(true);
+    
+    // Ukuran asli (sebelum keputusan kompresi)
+    $table->unsignedBigInteger('original_size_bytes');
+    
+    // Ukuran setelah penyimpanan (bisa = original_size jika tidak dikompres)
+    $table->unsignedBigInteger('stored_size_bytes');
+    
+    // Apakah file disimpan dalam bentuk terkompresi?
+    $table->boolean('is_stored_compressed')->default(false);
+    $table->string('compression_type')->nullable(); // 'gzip', 'zstd', null
+    
+    // Tambahan untuk file besar:
+    $table->boolean('is_already_compressed')->default(false) // deteksi otomatis
+        ->comment("True if file is PDF/MP4/JPG/etc — skip compression");
+    
+    $table->timestamps();
+});
+
+<!--
+Query cek efektifitas
+-- Total ukuran tanpa deduplikasi
+SELECT SUM(original_size_bytes) AS naive_total
+FROM dochub_blobs;
+
+-- Total ukuran dengan deduplikasi
+SELECT SUM(stored_size_bytes) AS actual_total
+FROM dochub_blobs;
+
+-- Penghematan
+SELECT 
+  naive.total - actual.total AS saved_bytes,
+  ROUND(100.0 * (naive.total - actual.total) / naive.total, 2) AS savings_percent
+FROM 
+  (SELECT SUM(original_size_bytes) AS total FROM dochub_blobs) naive,
+  (SELECT SUM(stored_size_bytes) AS total FROM dochub_blobs) actual;
+
+Contoh hasil
+saved_bytes | savings_percent
+------------|----------------
+1_250_000_000 | 62.35%
+-->
+
+<!-- model Manifest -->
+Schema::create('dochub_manifests', function (Blueprint $table) {
+      $table->id();
+      $table->foreignId('repository_id')->constrained();
+      $table->foreignId('from_id')->constrained('users');
+
+      // 🔑 Metadata kritis di DB (untuk query cepat)
+
+      // untuk source format {type}:{identifier}[-{environment}][-{version}]
+      // type {type}:{identifier}[-{environment}][-{version}]
+
+      // Komponen | Wajib? | Contoh | Tujuan
+      // type | ✅ Ya | cms, api, upload, ci | Kategorisasi sumber | 
+      // identifier | ✅ Ya | client-x, erp-system | Nama unik sumber | 
+      // environment ⚠️ Opsional | prod, staging, dev | Hindari konflik environment
+      // version ⚠️ Opsional | v1, 2025.11 | Lacak evolusi sumber
+
+      // contoh
+      // 3rd backend => cms:client-a-prod, wordpress:client-b-staging, strapi:marketing-site-v2, api:erp-system-integration, 
+      // manual/user => upload:admin-john-20251130, cli:dev-maria-feature-xyz, ci:github-actions-deploy-v1
+      // internal/system => backup:daily-2025-11-30, migration:legacy-system-v1, template:laravel-starter-2.1
+      $table->string('source');                // [jenis]:[identifier], 'client-xyz-backend'
+      
+      // Prinsip Desain Kolom version
+      // 1. Immutable: Tidak boleh diubah setelah dibuat
+      // 2. Unique per sumber: Tidak boleh duplikat untuk source yang sama
+      // 3. Comparable: Bisa diurutkan chronologically atau versionally
+      // 4. Human-readable: Mudah dibaca di log/UI
+      // 5. Machine-friendly: Format standar (ISO 8601 atau SemVer)
+
+      // Pendekatan cara is_infinite
+      //1. Timestamp ISO 8601 (Direkomendasikan untuk Integrasi Real-time), eg: YYYY-MM-DDTHH:MM:SS+00:00
+      //    Kapan Dipakai:
+      //    - Sinkronisasi otomatis dari third-party
+      //    - Sistem event-driven
+      //    - Butuh urutan chronologis pasti
+      //    Keuntungan: 
+      //    - Urutan pasti: 2025-11-30T10:30:00Z < 2025-11-30T10:31:00Z
+      //    - Universal: Diakui semua sistem (PHP, JS, DB)
+      //    - Auto-incremental: Tidak perlu koordinasi antar server
+      //    - Audit-friendly: "Sync terakhir dari client A: 30 Nov 2025, 10:30 UTC"
+      //    contoh validasi:
+      //    if (!preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/', $version)) {
+      //        throw new \InvalidArgumentException("Invalid ISO 8601 timestamp");
+      //    }
+      //2. Semantic Versioning (SemVer) untuk Sistem Terkontrol, format: MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD], eg: 1.2.3 (rilis stabil), 2.0.0-rc.1 (relase candidate), 1.5.0+20251130.1030 (Build metadata tanggal + jam), 2025.11.30 (calender versioning)
+      //    Kapan Dipakai:
+      //    - Integrasi dengan sistem yang punya versioning eksplisit (CMS, API versioned)
+      //    - Release manual dengan changelog
+      //    - Butuh kompatibilitas backward tracking
+      //    Keuntungan:
+      //    - Makna eksplisit: 2.0.0 berarti breaking change
+      //    - Kompatibilitas jelas: ^1.2.3 berarti kompatibel dengan 1.x
+      //    - Integrasi dengan tooling: npm, composer, dll mengenali SemVer
+      //    Kekurangan:
+      //    - Butuh koordinasi: Siapa yang naikkan versi?
+      //    - Risiko duplikat: Dua tim release versi sama
+      //    - Tidak chronologis pasti: 1.10.0 < 1.9.0 secara string! (harus pakai comparator)
+      //  Perbandingan:
+      //  Kriteria | Timestamp ISO 8601 | Semantic Versioning
+      //  Unik per source | ✅ Otomatis (resolusi detik/milidetik) | ⚠️ Perlu koordinasi
+      //  Urutan chronologis | ✅ Pasti | ❌ 1.10.0 < 1.9.0 sebagai string
+      //  Human-readable | ✅ Jelas kapan terjadi | ✅ Jelas tingkat perubahan
+      //  Machine-sortable | ✅ String sort = time sort | ❌ Butuh parser SemVer
+      //  Audit trail | ✅ "Terjadi jam 10:30" | ✅ "Versi 2.1.0 dirilis"
+      //  Kompatibilitas | ❌ Tidak ada info breaking change | ✅ MAJOR = breaking change
+      //  Rekomdendasi: Gunakan ISO 8601 timestamp
+      //  Alasannya:
+      //  - Konsisten dengan merged_at di csdb_merges (keduanya timestamp UTC)
+      //  - Mendukung high-frequency sync (client bisa sync 10x/menit tanpa duplikat)
+      //  - Kompatibel dengan semua third-party (semua API modern pakai ISO 8601)
+      //  contoh: Di client-side JavaScript
+      //  const version = new Date().toISOString(); // "2025-11-30T10:30:45.123Z"
+
+      $table->string('version');               // "2025-11-30T10:30:00Z",  timestamp otoritatif yang menjadi tulang punggung audit trail, rollback, dan deteksi konflik
+      $table->unsignedInteger('total_files');
+      $table->unsignedBigInteger('total_size_bytes'); // total files sebelum di compress
+      $table->string('hash_tree_sha256', 64); // untuk validasi
+
+      // 🔑 Pointer ke file fisik
+      $table->string('storage_path');         // 'manifests/2025/11/abc123.json', relative to app/private/dochub/workspace
+
+      // Index untuk query cepat
+      $table->index('source');
+      $table->index('version');
+      $table->index('created_at');
+
+      $table->timestamps();
+    });
