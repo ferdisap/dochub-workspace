@@ -8,8 +8,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('dochub')->middleware('web')->group(function () {
   // Single endpoint for all drivers
-  Route::post('/upload', [UploadController::class, 'upload']);
-  Route::get('/upload/config', [UploadController::class, 'getConfig']);
+  // Route::post('/upload', [UploadController::class, 'upload']);
+  // Route::get('/upload/config', [UploadController::class, 'getConfig']);
 
   // Tus-specific routes (for compatibility)
   // Route::get('/upload/{id}', [UploadController::class, 'upload']); // harusnya head method
@@ -23,18 +23,19 @@ Route::prefix('dochub')->middleware('web')->group(function () {
 
   // Chunked native upload
   // tambahkan ->middleware('throttle:100,1'); // 100 chunk/menit
-  Route::post('/upload/chunk', [UploadNativeController::class, 'uploadChunk']);
-  Route::post('/upload/process', [UploadNativeController::class, 'processUpload']);
-  Route::get('/upload/{id}/status', [UploadNativeController::class, 'getUploadStatus']);
-  Route::delete('/upload/{id}', [UploadNativeController::class, 'deleteUpload']);
+  Route::get('/upload/config', [UploadController::class, 'getConfig'])->middleware('auth')->name('dochub.upload.config');
+  Route::post('/upload/chunk', [UploadNativeController::class, 'uploadChunk'])->middleware('auth')->name('dochub.upload.chunk');
+  Route::post('/upload/process', [UploadNativeController::class, 'processUpload'])->middleware('auth')->name('dochub.upload.process');
+  Route::get('/upload/{id}/status', [UploadNativeController::class, 'getUploadStatus'])->middleware('auth')->name('dochub.upload.status');
+  Route::delete('/upload/{id}/delete', [UploadNativeController::class, 'deleteUpload'])->middleware('auth')->name('dochub.upload.delete');
 
-  Route::get("/tes", [UploadNativeController::class, 'tesJob']);
+  // Route::get("/tes", [UploadNativeController::class, 'tesJob']);
 
   // Manual cleanup
-  Route::post('/upload/cleanup', function () {
-    dispatch(new UploadCleanupJob());
-    return response()->json(['status' => 'cleanup scheduled']);
-  })->middleware('auth');
+  // Route::post('/upload/cleanup', function () {
+  //   dispatch(new UploadCleanupJob());
+  //   return response()->json(['status' => 'cleanup scheduled']);
+  // })->middleware('auth');
 });
 
 // Tus routes (already exists)

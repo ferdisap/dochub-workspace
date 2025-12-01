@@ -1,6 +1,7 @@
 // resources/js/app.js
 import { createApp } from 'vue'
-import UploadManager from './UploadManager.vue'
+// import UploadManager from './UploadManager.vue'
+import ChunkUpload from './ChunkUpload.vue'
 
 // Register globally
 // window.UploadManager = UploadManager
@@ -22,4 +23,5 @@ import UploadManager from './UploadManager.vue'
 //   }
 // }).mount('#app')
 // const { createApp } = Vue
-createApp(UploadManager).mount('#app')
+// createApp(UploadManager).mount('#app')
+createApp(ChunkUpload).mount('#app')

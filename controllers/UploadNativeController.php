@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Redis;
  * Nonaktif di enable_post_data_reading = Off
  * Tapi Laravel default: tersedia
  */
-class UploadNativeController
+class UploadNativeController extends UploadController
 {
   protected $cacheDriver = 'file';
   /**
@@ -67,12 +67,12 @@ class UploadNativeController
       'last_chunk' => $chunkIndex,
     ]);
 
-    $metadata = Cache::driver($this->cacheDriver)->get("upload:{$uploadId}");
+    // $metadata = Cache::driver($this->cacheDriver)->get("upload:{$uploadId}");
     return response()->json([
       'chunk_index' => $chunkIndex,
       'status' => 'uploaded',
       'size' => filesize($chunkPath),
-      'metadata' => json_decode($metadata) // untuk dump saja
+      // 'metadata' => json_decode($metadata) // untuk dump saja
     ]);
   }
 
