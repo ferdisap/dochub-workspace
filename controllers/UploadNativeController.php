@@ -3,7 +3,8 @@
 namespace Dochub\Controller;
 
 use Dochub\Job\ProcessZipJob;
-use Dochub\Upload\Cache\NativeUploadCache;
+use Dochub\Job\UploadCleanupJob;
+use Dochub\Upload\Cache\NativeCache;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redis;
@@ -17,10 +18,11 @@ use Illuminate\Support\Facades\Redis;
 class UploadNativeController extends UploadController
 {
   // protected $cacheDriver = 'file';
-  protected NativeUploadCache $cache;
+  protected NativeCache $cache;
 
-  public function __construct() {
-    $this->cache = new NativeUploadCache();
+  public function __construct()
+  {
+    $this->cache = new NativeCache();
   }
   /**
    * POST /upload/chunk
@@ -43,7 +45,7 @@ class UploadNativeController extends UploadController
     }
 
     // Buat direktori upload
-    $uploadDir = config('upload.driver.native.root') ."/{$uploadId}";
+    $uploadDir = config('upload.driver.native.root') . "/{$uploadId}";
     if (!is_dir($uploadDir)) {
       mkdir($uploadDir, 0755, true);
     }
@@ -100,35 +102,6 @@ class UploadNativeController extends UploadController
     // Gabung chunk
     $uploadDir = config('upload.driver.native.root') . "/{$uploadId}";
     $data['upload_dir'] = $uploadDir;
-    // $finalPath = config('upload.driver.native.root') . "/{$uploadId}/{$fileName}";
-    
-    // $metadata = json_decode($metadata, true);
-    // $metadata['upload_dir'] = $uploadDir;
-    // $metadata = json_encode($metadata);
-    // $this->cache->set($uploadId, $metadata, 3600);
-
-    // $chunks = [];
-    // for ($i = 0; $i < $data['total_chunks']; $i++) {
-    //   $chunks[] = "{$uploadDir}/{$fileName}.part{$i}";
-    // }
-
-    // // Gabung file
-    // $final = fopen($finalPath, 'wb');
-    // foreach ($chunks as $chunk) {
-    //   if (file_exists($chunk)) {
-    //     $content = file_get_contents($chunk);
-    //     fwrite($final, $content);
-    //     unlink($chunk); // Hapus chunk
-    //   }
-    // }
-    // fclose($final);
-
-    // // Validasi ZIP
-    // if (!$this->isValidZip($finalPath)) {
-    //   unlink($finalPath);
-    //   rmdir($uploadDir);
-    //   return response()->json(['error' => 'Invalid ZIP file'], 400);
-    // }
 
     // Dispatch job
     // $job = ProcessZipJob::withId(json_encode($data), Auth::user()->id);
@@ -140,7 +113,7 @@ class UploadNativeController extends UploadController
       $jobId = 0;
     } catch (\Throwable $th) {
       dd($th);
-      return ;
+      return;
     }
 
     // Update metadata
@@ -148,6 +121,9 @@ class UploadNativeController extends UploadController
     $data['status'] = 'processing';
     // Redis::setex($uploadId, 3600, json_encode($data));
     $this->cache->set($uploadId, json_encode($data), 3600);
+
+    // cleanup
+    // dispatch(new UploadCleanupJob())->onQueue('cleanup')->delay(now()->addSeconds(30));
 
     return response()->json([
       'upload_id' => $uploadId,
@@ -204,11 +180,11 @@ class UploadNativeController extends UploadController
 
     // // Cek Redis dulu
     // if ($this->cache->driver() === 'redis') {
-      // $wasCleaned = RedisCleanup::cleanupIfCompleted($id, $data);
+    // $wasCleaned = RedisCleanup::cleanupIfCompleted($id, $data);
     // }
     // Jika tidak ada di Redis, cek cache
     // else {
-      // $wasCleaned = CacheCleanup::cleanupIfCompleted($id, $data);
+    // $wasCleaned = CacheCleanup::cleanupIfCompleted($id, $data);
     // }
 
     if ($wasCleaned) {
@@ -265,28 +241,6 @@ class UploadNativeController extends UploadController
       $ttl = 300; // 5 menit
     }
     $this->cache->set($uploadId, json_encode($updated), $ttl);
-
-
-    // jika pakai redis
-    // $metadata = Redis::get($uploadId);
-    // $existing = $metadata ? json_decode($metadata, true) : [];
-
-    // $updated = array_merge($existing, $data, [
-    //   'uploaded_chunks' => ($existing['uploaded_chunks'] ?? 0) + 1,
-    //   'updated_at' => now()->timestamp,
-    // ]);
-
-    // // 🔑 TTL dinamis berdasarkan , agar ke hapus otomatis
-    // $ttl = 3600; // Default 1 jam
-
-    // // Jika upload sudah 100% dan ada job_id → perpendek TTL
-    // $progress = $updated['total_chunks'] ?
-    //   ($updated['uploaded_chunks'] / $updated['total_chunks']) : 0;
-
-    // if ($progress >= 1.0 && isset($updated['job_id'])) {
-    //   $ttl = 300; // 5 menit
-    // }
-    // Redis::setex($uploadId, $ttl, json_encode($updated));
   }
 
   /**

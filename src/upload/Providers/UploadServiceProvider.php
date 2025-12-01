@@ -30,11 +30,11 @@ class UploadServiceProvider extends ServiceProvider
     $this->ensureDirectories();
 
     // Jadwalkan cleanup otomatis
-    if (config('upload.cleanup.enabled')) {
-      $this->app->terminating(function () {
-        $this->scheduleCleanup();
-      });
-    }
+    // if (config('upload.cleanup.enabled')) {
+    //   $this->app->terminating(function () {
+    //     $this->scheduleCleanup();
+    //   });
+    // }
 
     // Log untuk debugging
     Log::info('Upload system initialized', [
@@ -92,15 +92,15 @@ class UploadServiceProvider extends ServiceProvider
     }
   }
 
-  private function scheduleCleanup()
-  {
-    // Cleanup async via queue
-    if (app()->runningInConsole()) return;
+  // private function scheduleCleanup()
+  // {
+  //   // Cleanup async via queue
+  //   if (app()->runningInConsole()) return;
 
-    dispatch(new \Dochub\Job\UploadCleanupJob())
-      ->onQueue('cleanup')
-      ->delay(now()->addSeconds(30));
-  }
+  //   dispatch(new \Dochub\Job\UploadCleanupJob())
+  //     ->onQueue('cleanup')
+  //     ->delay(now()->addSeconds(30));
+  // }
 
 
   // /**

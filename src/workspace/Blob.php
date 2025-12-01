@@ -21,7 +21,7 @@ class Blob
   /** relative to blob path */
   public static function path(?string $path = null): string
   {
-    return Workspace::blobPath() . $path ? "/{$path}" : "";;
+    return Workspace::blobPath() . ($path ? "/{$path}" : "");
   }
 
   /**
@@ -44,18 +44,14 @@ class Blob
     // $storage_path = null;
 
     $wsFiles = [];
-    
     foreach ($files as $relativePath => $filePath) {
+      // dd($relativePath, $filePath);
       try {
         if (Workspace::isDangerousFile($relativePath)) {
           $result['errors'][] = "Skipped dangerous file: {$relativePath}";
           continue;
         }
         $hash = $this->blobStorage->store($filePath);
-  
-        // Simpan ke database (implementasi sesuai kebutuhan)
-        // Contoh: 
-        // CsdbFile::create([...]);
         $processed++;
   
         $filesize = filesize($filePath);
@@ -71,10 +67,10 @@ class Blob
 
     $wsFiles = array_map(fn ($wsFile) => $wsFile->toArray(), $wsFiles);
     $version = ManifestVersionParser::makeVersion();
-    $hashSha256 = Manifest::hash($wsFiles);
     $wsManifest = new Manifest(
-      $source, $version, $total_files, $total_size_bytes, $hashSha256, 
+      $source, $version, $total_files, $total_size_bytes, $wsFiles,
     );
+    $wsManifest->store();
     return $wsManifest;
   }
 

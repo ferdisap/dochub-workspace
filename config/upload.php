@@ -58,7 +58,7 @@ return [
       'production_safe' => env('TUS_PRODUCTION_SAFE', env('APP_ENV') === 'production'),
       'cache_ttl' => env('TUS_CACHE_TTL', 86400), // 24 jam
       'cache_prefix' => env('TUS_CACHE_PREFIX', 'tus:'),
-      'use_redis' => env('TUS_USE_REDIS', false),
+      'use_redis' => env('TUS_USE_REDIS', false), // saat ini masih support false
       'lock_timeout' => env('TUS_LOCK_TIMEOUT', 30), // detik
     ],
     'native' => [

@@ -15,6 +15,8 @@ class Workspace
   {
     $driver = Config::get("workspace.default"); // string
     return Config::get("workspace.disks.{$driver}.root", App::storagePath('workspace')) . ($path ? "/{$path}" : '');
+    // $url = parse_url(Config::get("workspace.disks.{$driver}.root", App::storagePath('workspace')) . ($path ? "/{$path}" : ''));
+    // $url
   }
 
   public static function blobPath()

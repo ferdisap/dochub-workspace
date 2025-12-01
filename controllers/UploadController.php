@@ -2,79 +2,14 @@
 
 namespace Dochub\Controller;
 
+use Dochub\Upload\Cache\RedisCache;
 use Dochub\Upload\EnvironmentDetector;
-use Dochub\Upload\Services\NativeUploadHandler;
-use Dochub\Upload\Services\TusUploadHandler;
+use Dochub\Workspace\Models\Manifest;
+use Dochub\Workspace\Services\ManifestLocalStorage;
 use Illuminate\Http\Request;
-use Dochub\Upload\Services\RedisClient;
 
 class UploadController
 {
-  public function __construct(
-    private TusUploadHandler $tusHandler,
-    private NativeUploadHandler $nativeHandler
-  ) {}
-
-  // public function createUpload(Request $request)
-  // {
-  //   return $this->tusHandler->createUpload($request);
-  // }
-
-  // public function headUpload(Request $request, string $id)
-  // {
-  //   return $this->tusHandler->headUpload($request, $id);
-  // }
-
-  // public function patchUpload(Request $request, string $id)
-  // {
-  //   return $this->tusHandler->patchUpload($request, $id);
-  // }
-
-  // public function getUploadStatus(Request $request, string $id)
-  // {
-  //   // Cek apakah ini upload native (prefix "native_")
-  //   if (str_starts_with($id, 'native_')) {
-  //     return $this->nativeHandler->getStatus($id);
-  //   }
-
-  //   // Untuk Tus, redirect ke headUpload
-  //   return $this->headUpload($request, $id);
-  // }
-
-  // public function deleteUpload(Request $request, string $id)
-  // {
-  //   if (str_starts_with($id, 'native_')) {
-  //     return $this->nativeHandler->deleteUpload($id);
-  //   }
-
-  //   // Untuk Tus, pakai tus delete
-  //   return $this->tusHandler->deleteUpload($id);
-  // }
-
-  // /**
-  //  * Single endpoint for all upload methods
-  //  * 
-  //  * @query param string $driver Override driver (tus/native)
-  //  */
-  // public function upload(Request $request)
-  // {
-  //   // Tentukan driver
-  //   $driver = $request->query('driver')
-  //     ?? config('upload.default')
-  //     ?? EnvironmentDetector::getUploadStrategy();
-
-  //   // Validasi
-  //   if (!in_array($driver, ['tus', 'native'])) {
-  //     return response()->json(['error' => 'Invalid driver'], 400);
-  //   }
-
-  //   // Delegate ke handler spesifik
-  //   return match ($driver) {
-  //     'tus' => $this->tusHandler->handle($request),
-  //     'native' => $this->nativeHandler->handle($request),
-  //   };
-  // }
-
   /**
    * Get upload configuration
    */
@@ -92,18 +27,16 @@ class UploadController
     ]);
   }
 
-  private function isRedisAvailable(): bool
-  {
-    try {
-      $redis = $this->getRedisClient();
-      return $redis->ping() === '+PONG' || 'PONG';
-    } catch (\Exception $e) {
-      return false;
-    }
+  public function getManifest(Request $request){
+    // $id = $request->id;
+    $version = "2025-12-01T14:14:08.611Z";
+    $manifestModel = Manifest::where('version', $version)->first();
+    $manifest = app(ManifestLocalStorage::class)->get($manifestModel->storage_path);
+    dd($manifestModel->storage_path, $manifest);
   }
 
-  private static function getRedisClient()
+  private function isRedisAvailable(): bool
   {
-    return RedisClient::getInstance();
+    return RedisCache::isAvailable();
   }
 }

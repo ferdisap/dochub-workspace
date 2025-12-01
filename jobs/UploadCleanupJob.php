@@ -2,6 +2,7 @@
 
 namespace Dochub\Job;
 
+use Dochub\Upload\Cache\NativeCache;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -16,8 +17,8 @@ class UploadCleanupJob implements ShouldQueue
 
   public function handle()
   {
-    // Cleanup Tus uploads
-    $this->cleanupTusUploads();
+    // // Cleanup Tus uploads
+    // $this->cleanupTusUploads();
 
     // Cleanup Native uploads
     $this->cleanupNativeUploads();
@@ -33,7 +34,7 @@ class UploadCleanupJob implements ShouldQueue
     $server->setUploadDir(config('upload.driver.tus.root'));
 
     if (config('upload.driver.tus.use_redis')) {
-      $server->setCache($this->getRedisClient());
+      $server->setCache(new NativeCache());
     }
 
     // Gunakan method bawaan Tus
@@ -42,39 +43,16 @@ class UploadCleanupJob implements ShouldQueue
 
   private function cleanupNativeUploads()
   {
-    $pattern = 'upload:native_*';
-    $cursor = 0;
-    $deleted = 0;
-
-    do {
-      [$cursor, $keys] = Redis::scan($cursor, 'MATCH', $pattern, 'COUNT', config('upload.cleanup.batch_size'));
-
-      foreach ($keys as $key) {
-        $metadata = Redis::get($key);
-        if (!$metadata) continue;
-
-        $data = json_decode($metadata, true);
-        if (isset($data['expires_at']) && $data['expires_at'] < time()) {
-          @unlink($data['path']);
-          Redis::del($key);
-          $deleted++;
-        }
-      }
-    } while ($cursor !== 0);
-
-    if ($deleted > 0) {
-      Log::info("Cleaned up {$deleted} native uploads");
-    }
+    $this->cleanupNativeUploadCache();
   }
-
-  private function getRedisClient()
+  private function cleanupNativeUploadCache()
   {
-    $config = config('upload.redis');
-    return new \Predis\Client([
-      'host' => $config['host'],
-      'port' => $config['port'],
-      'password' => $config['password'],
-      'database' => $config['database'],
-    ]);
+    $cache = new NativeCache();
+    $deleted = $cache->cleanupExpired();
+    // $keys = $cache->keys();
+    // $delete = $cache->deleteAll($keys);
+    // $deleted = $delete ? count($keys) : 0;
+
+    Log::info("Cleaned up {$deleted} native uploads");
   }
 }

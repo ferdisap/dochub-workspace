@@ -2,6 +2,7 @@
 
 namespace Dochub\Workspace;
 
+use Dochub\Workspace\Helpers\Uri;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\App;
 use Dochub\Workspace\Services\ManifestLocalStorage;
@@ -25,6 +26,21 @@ class File
     public string $file_modified_at,
   ) {}
 
+  public static function create(array $fileArray):self
+  {
+    $relative_path = $fileArray["relative_path"];
+    $sha256 = $fileArray["sha256"];
+    $size_bytes = $fileArray["size_bytes"];
+    $file_modified_at = $fileArray["file_modified_at"];
+
+    return new self(
+      $relative_path,
+      $sha256,
+      $size_bytes,
+      $file_modified_at
+    );
+  }
+
   /** relative to manifest path */
   public static function path(?string $path = null)  {
     return Workspace::filePath() . ($path ? "/{$path}" : "");
@@ -33,7 +49,7 @@ class File
   function toArray()
   {
     return [
-      'relative_path' => $this->relative_path,
+      'relative_path' => Uri::normalizePath($this->relative_path),
       'sha256' => $this->sha256,
       'size_bytes' => $this->size_bytes,
       'file_modified_at' => $this->file_modified_at,

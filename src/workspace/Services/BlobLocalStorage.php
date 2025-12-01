@@ -3,7 +3,7 @@
 namespace Dochub\Workspace\Services;
 
 use Dochub\Workspace\Blob;
-use Dochub\Workspace\Models\Blob as BlobModdel;
+use Dochub\Workspace\Models\Blob as BlobModel;
 use RuntimeException;
 use Dochub\Workspace\Services\LockManager as ServicesLockManager;
 use Dochub\Workspace\Workspace;
@@ -109,19 +109,19 @@ class BlobLocalStorage
     
     $metadata["original_size_bytes"] = $size;
     
-    // 1. Dapatkan hash (dari third-party atau hitung sendiri)
+    // #1. Dapatkan hash (dari third-party atau hitung sendiri)
     $hash = $this->resolveHash($filePath, $providedHash, $size);
     
-    // 2. Cek deduplikasi: jika blob sudah ada, langsung return
+    // #2. Cek deduplikasi: jika blob sudah ada, langsung return
     if ($this->blobExists($hash)) {
       return $hash;
     }
 
-    // 3. Simpan file ke blob storage (atomic, dengan lock)
+    // #3. Simpan file ke blob storage (atomic, dengan lock)
     // $this->storeFileAtomic($filePath, $hash, $metadata);
     $this->storeFileAtomicCompress($filePath, $hash, $metadata);
 
-    // 4. Simpan metadata ke database
+    // #4. Simpan metadata ke database
     $this->storeMetadata($hash, $size,  $metadata);
 
     return $hash;
@@ -363,7 +363,7 @@ class BlobLocalStorage
 
           // 🔑 Simpan metadata kompresi
           // $storedSize = filesize($blobPath);
-          // BlobModdel::where('hash', $hash)->update([
+          // BlobModel::where('hash', $hash)->update([
           //   'is_stored_compressed' => $shouldCompress,
           //   'compression_type' => $shouldCompress ? 'gzip' : null,
           //   'stored_size_bytes' => $storedSize,
@@ -394,7 +394,7 @@ class BlobLocalStorage
     $isAlreadyCompressed = $this->isAlreadyCompressedMime($mime);
 
     // Simpan ke DB
-    BlobModdel::create([
+    BlobModel::create([
       'hash' => $hash,
       'mime_type' => $mime,
       'is_binary' => $isBinary,
@@ -458,16 +458,16 @@ class BlobLocalStorage
    */
   public function blobExists(string $hash): bool
   {
-    // Cek DB dulu (lebih cepat)
-    if (BlobModdel::where('hash', $hash)->exists()) {
-      return true;
-    }
-
+    
+    // Cek DB dulu (lebih cepat). Karena local storage, jadi tidak di check ke DB
+    // if (BlobModel::where('hash', $hash)->exists()) {
+    //   return true;
+    // }
+    
     // Opsional: cek file (fallback)
-    $subDir = substr($hash, 0, 2);
-    // $path = storage_path("app/private/dochub/blobs/{$subDir}/{$hash}");
-    $path = Workspace::blobPath() . "/{$subDir}/{$hash}";
+    $path = $this->getBlobPath($hash);
     return file_exists($path);
+    // return file_exists($path) && BlobModel::where('hash', $hash)->exists();
   }
 
   /**
@@ -488,7 +488,7 @@ class BlobLocalStorage
    * 
    * @example
    * // Di controller (stream ke response)
-   * $blob = BlobModdel::where('hash', $hash)->firstOrFail();
+   * $blob = BlobModel::where('hash', $hash)->firstOrFail();
    * return response()->stream(function () use ($hash, $blobLocalStorage) {
    *     $blobLocalStorage->withBlobContent($hash, $blob->compression_type, function ($stream) {
    *         while (!feof($stream)) {
@@ -499,7 +499,7 @@ class BlobLocalStorage
    * });
    * 
    * // Hitung hash ulang
-   * $blob = BlobModdel::where('hash', $hash)->firstOrFail();
+   * $blob = BlobModel::where('hash', $hash)->firstOrFail();
    * $sha256 = $blobLocalStorage->withBlobContent($hash, $blob->compression_type, function ($stream) {
    *     $ctx = hash_init('sha256');
    *     while (!feof($stream)) {
@@ -541,7 +541,7 @@ class BlobLocalStorage
    * @throws RuntimeException
    * 
    * @example @return resource
-   *   $blob = BlobModdel::where('hash', $hash)->firstOrFail();
+   *   $blob = BlobModel::where('hash', $hash)->firstOrFail();
    *   $stream = $blobLocalStorage->getBlobContent($hash, $blob->compression_type, true);
    *   try {
    *       while (!feof($stream)) {

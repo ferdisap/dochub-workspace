@@ -27,8 +27,8 @@
     "illuminate/http": "*",
     "sebastian/diff": "*",
     "ankitpokhrel/tus-php": "^2.4",
-    "predis/predis": "*",
     "laravel-zero/foundation": "^12.40",
-    "illuminate/queue": "^12.40"
+    "illuminate/queue": "^12.40",
+    "predis/predis": "^2.4"
   }
 }

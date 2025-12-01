@@ -2,7 +2,6 @@
 
 use Dochub\Controller\UploadController;
 use Dochub\Controller\UploadNativeController;
-use Dochub\Job\UploadCleanupJob;
 use Illuminate\Support\Facades\Route;
 
 
@@ -28,6 +27,8 @@ Route::prefix('dochub')->middleware('web')->group(function () {
   Route::post('/upload/process', [UploadNativeController::class, 'processUpload'])->middleware('auth')->name('dochub.upload.process');
   Route::get('/upload/{id}/status', [UploadNativeController::class, 'getUploadStatus'])->middleware('auth')->name('dochub.upload.status');
   Route::delete('/upload/{id}/delete', [UploadNativeController::class, 'deleteUpload'])->middleware('auth')->name('dochub.upload.delete');
+
+  Route::get('/manifest', [UploadController::class, 'getManifest'])->middleware('auth')->name('dochub.manifest');
 
   // Route::get("/tes", [UploadNativeController::class, 'tesJob']);
 

@@ -2,32 +2,47 @@
 
 namespace Dochub\Upload\Cache;
 
-use Illuminate\Support\Facades\App;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Redis;
+use Predis\Client;
 
 class RedisCache {
 
   /**
    * Dapatkan keys dari file cache berdasarkan prefix
    */
-  public static function keys(string $prefix): array
+  public static function keys(string $prefix, bool $safe = true): array
   {
+    // $cache->getStore()->getKeys() coba pakai ini jika error
     return self::safeKeysInProduction($prefix);
+  }
+
+  public static function isAvailable(){
+    $driver = config('cache.stores.redis.driver');
+    if($driver === 'phpredis' || $driver === 'redis'){
+      return class_exists(\Redis);
+    } 
+    else if($driver === 'predis'){
+      return class_exists(Client::class);
+    }
+    return false;
   }
 
     /**
    * ✅ Production-safe: gunakan SCAN (non-blocking).
    */
-  private static function safeKeysInProduction($prefix): array
+  public static function safeKeysInProduction(string $prefix, int $batchSize = 0): array
   {
     $cursor = 0;
     $keys = [];
     $pattern = $prefix . '*';
-    $count = env('upload.redis.scan_count', 100);
+    $count = $batchSize ? $batchSize : env('upload.redis.scan_count', 100);
 
     do {
-      $result = Redis::scan($cursor, 'MATCH', $pattern, 'COUNT', $count);
+      $result = Redis::scan($cursor, [
+          'MATCH' => $pattern,
+          'COUNT' => $count
+        ]);
+      // $result = Redis::scan($cursor, 'MATCH', $pattern, 'COUNT', $count);
       if (! $result || ! is_array($result) || count($result) !== 2) {
         break;
       }

@@ -3,7 +3,7 @@
 namespace Dochub\Job;
 
 use App\Services\RedisCleanupService;
-use Dochub\Upload\Cache\NativeUploadCache;
+use Dochub\Upload\Cache\NativeCache;
 use Dochub\Upload\Services\CacheCleanup;
 use Dochub\Workspace\Blob;
 use Dochub\Workspace\Enums\ManifestSourceType;
@@ -33,21 +33,18 @@ class ProcessZipJob implements ShouldQueue
   public int $id = 0;
 
   public string $uploadId;
+  public string $filePath;
 
-  protected NativeUploadCache $cache;
+  protected NativeCache $cache;
 
+  public string $metadata; // string json
+  public int $userId;
   /**
    * Create a new job instance.
    */
-  public function __construct(
-    public string $metadata, // string json
-    public int $userId,
-    // public bool $syncMode = false // Jika true, jalankan synchronously
-  ) {
-    // Jika syncMode true, override queue configuration
-    // if ($this->syncMode) {
-    // $this->sync = true;
-    // }
+  public function __construct(string $metadata, int $userId) {
+    $this->metadata = $metadata;
+    $this->userId = $userId;
   }
 
   /**
@@ -134,7 +131,7 @@ class ProcessZipJob implements ShouldQueue
   private function createExtractDirectory(): string
   {
     // $dir = sys_get_temp_dir() . '/extract_' . uniqid();
-    $dir = Workspace::path('files/');
+    $dir = Workspace::path('files');
     @mkdir($dir, 0755, true);
     return $dir;
   }
@@ -186,21 +183,20 @@ class ProcessZipJob implements ShouldQueue
         $files[$relativePath] = $file->getPathname();
       }
     }
-
     return $files;
   }
 
   /**
    * Proses file ke blob storage
    */
-  private function processFiles(array $files, array &$result, bool $unlinkIfSuccess = true): void
+  private function processFilesToBlobs(array $files, array &$result, bool $unlinkIfSuccess = true): void
   {
     $blob = new Blob();
     $totalprocessed = 0;
     $source = ManifestSourceParser::makeSource(ManifestSourceType::UPLOAD->value, "user-{$this->userId}");
     $wsManifest = $blob->store($this->userId, $source, $files, function (string $hash, string $relativePath, string $absolutePath, ?\Exception $e, int $processed, int $total) use(&$totalprocessed, $unlinkIfSuccess){
       if ($hash || ($e === null)) {
-        // if ($unlinkIfSuccess) unlink($absolutePath);
+        if ($unlinkIfSuccess) unlink($absolutePath);
         if ($processed % 10 === 0 || $processed === $total) {
           $progress = round(($processed / $total) * 100);
           $this->updateStatus('processing', $progress, [
@@ -227,74 +223,10 @@ class ProcessZipJob implements ShouldQueue
       'total_files' => $wsManifest->total_files,
       'total_size_bytes' => $wsManifest->total_size_bytes,
       'hash_tree_sha256' => $wsManifest->hash_tree_sha256,
-      'storage_path' => $wsManifest::hashPath($wsManifest->hash_tree_sha256),
+      'storage_path' => $wsManifest->storage_path()
     ]);
     return;
-    // $total = count($files);
-    // $processed = 0;
-    // $blobStorage = app(BlobStorage::class);
-
-    // foreach ($files as $relativePath => $filePath) {
-    //   try {
-    //     // Skip file berisiko
-    //     if (Workspace::isDangerousFile($relativePath)) {
-    //       $result['errors'][] = "Skipped dangerous file: {$relativePath}";
-    //       continue;
-    //     }
-
-    //     // Simpan ke blob
-    //     $hash = $blobStorage->store($filePath);
-
-    //     // Simpan ke database (implementasi sesuai kebutuhan)
-    //     // Contoh: 
-    //     // CsdbFile::create([...]);
-
-    //     $processed++;
-
-    //     // Update progress setiap 10 file
-    //     if ($processed % 10 === 0 || $processed === $total) {
-    //       $progress = round(($processed / $total) * 100);
-    //       $this->updateStatus('processing', $progress, [
-    //         'files_processed' => $processed,
-    //         'total_files' => $total,
-    //       ]);
-    //     }
-    //   } catch (\Exception $e) {
-    //     $result['errors'][] = "Failed to process {$relativePath}: " . $e->getMessage();
-    //     Log::warning("File processing failed", [
-    //       'file' => $relativePath,
-    //       'error' => $e->getMessage(),
-    //     ]);
-    //   }
-    // }
-    // $result['files_processed'] = $processed;
   }
-
-  /**
-   * Deteksi file berisiko
-   */
-  // private function isDangerousFile(string $path): bool
-  // {
-  //   $dangerous = [
-  //     '.env',
-  //     '.git',
-  //     'composer.json',
-  //     'composer.lock',
-  //     '.php',
-  //     '.sh',
-  //     '.bat',
-  //     '.exe',
-  //     'node_modules/',
-  //     'vendor/',
-  //   ];
-
-  //   foreach ($dangerous as $pattern) {
-  //     if (str_contains($path, $pattern)) {
-  //       return true;
-  //     }
-  //   }
-  //   return false;
-  // }
 
   /**
    * Hapus direktori rekursif
@@ -323,10 +255,10 @@ class ProcessZipJob implements ShouldQueue
   // public function handle(): array
   public function handle()
   {
-    $this->cache = new NativeUploadCache();
+    $this->cache = new NativeCache();
 
-    $metadata = json_decode($this->metadata, true);
     // $this->metadata = json_decode($this->metadata, true);
+    $metadata = json_decode($this->metadata, true);
     $fileName = $metadata['file_name'];
     $uploadDir = $metadata['upload_dir'];
     $totalChunk = $metadata['total_chunks'];
@@ -344,7 +276,7 @@ class ProcessZipJob implements ShouldQueue
       'files_processed' => 0,
       'errors' => [],
       'started_at' => now()->toIso8601String(),
-      // nanti ada errors = [string]
+      // ada errors = [string]
     ];
 
     try {
@@ -358,8 +290,8 @@ class ProcessZipJob implements ShouldQueue
       $files = $this->scanDirectory($extractDir);
       $result['total_files'] = count($files);
 
-      // #. change into blob
-      $this->processFiles($files, $result);
+      // #2. change into blob
+      $this->processFilesToBlobs($files, $result);
       // $this->deleteDirectory($extractDir); // karena sudah di unlink, tidak perlu di delete directory
 
       // Update status sukses
@@ -376,11 +308,6 @@ class ProcessZipJob implements ShouldQueue
           'status' => 'completed',
           'upload_id' => $this->uploadId,
         ]);
-        // CacheCleanup::driver($this->cache_driver);
-        // CacheCleanup::cleanupUpload($this->uploadId, [
-        //   'status' => 'completed',
-        //   'upload_id' => $this->uploadId,
-        // ]);
       }
 
       Log::info("ProcessZipJob completed", $result);
@@ -400,12 +327,6 @@ class ProcessZipJob implements ShouldQueue
           'upload_id' => $this->uploadId,
           'error' => $e->getMessage()          
         ]);
-        // CacheCleanup::driver($this->cache_driver);
-        // CacheCleanup::cleanupUpload($this->uploadId, [
-        //   'status' => 'failed',
-        //   'upload_id' => $this->uploadId,
-        //   'error' => $e->getMessage()
-        // ]);
       }
 
       Log::error("ProcessZipJob failed", [
@@ -417,115 +338,4 @@ class ProcessZipJob implements ShouldQueue
       throw $e;
     }
   }
-  // /**
-  //  * Execute the job.
-  //  */
-  // // public function handle(BlobStorage $blobStorage): array
-  // // public function handle(): array
-  // public function handle()
-  // {
-  //   $metadata = json_decode($this->metadata, true);
-  //   // $this->metadata = json_decode($this->metadata, true);
-  //   $fileName = $metadata['file_name'];
-  //   $uploadDir = $metadata['upload_dir'];
-  //   $totalChunk = $metadata['total_chunks'];
-  //   $this->filePath = $uploadDir . "/" . $fileName;
-  //   $this->uploadId = $metadata['upload_id'];
-  //   $startTime = microtime(true);
-
-  //   $this->mergeZipChunk($totalChunk, $uploadDir, $fileName);
-
-  //   // ### start extract
-
-  //   $result = [
-  //     'upload_id' => $this->uploadId,
-  //     'file_path' => $this->filePath,
-  //     'status' => 'processing',
-  //     'files_processed' => 0,
-  //     'errors' => [],
-  //     'started_at' => now()->toIso8601String(),
-  //   ];
-
-  //   try {
-  //     // Update status ke Redis
-  //     $this->updateStatus('processing', 0);
-
-  //     // Validasi file
-  //     if (!file_exists($this->filePath)) {
-  //       throw new \RuntimeException("File not found: {$this->filePath}");
-  //     }
-
-  //     if (!$this->isValidZip($this->filePath)) {
-  //       throw new \RuntimeException("Invalid ZIP file");
-  //     }
-
-  //     // Ekstrak ke temporary directory
-  //     $extractDir = $this->createExtractDirectory();
-  //     $this->extractZip($this->filePath, $extractDir);
-
-  //     // Proses file
-  //     $files = $this->scanDirectory($extractDir);
-  //     $result['total_files'] = count($files);
-
-  //     // $this->processFiles($files, $blobStorage, $result);
-
-  //     // Cleanup
-  //     // $this->deleteDirectory($extractDir);
-  //     unlink($this->filePath);
-
-  //     // Update status sukses
-  //     $result['status'] = 'completed';
-  //     $result['completed_at'] = now()->toIso8601String();
-  //     $result['duration_seconds'] = round(microtime(true) - $startTime, 2);
-
-  //     $this->updateStatus('completed', 100, $result);
-
-  //     // 🔑 Auto-cleanup jika sync mode atau sudah selesai
-  //     if ($this->uploadId) {
-  //       // $this->cache->delete($this->uploadId);
-  //       CacheCleanup::driver($this->cache_driver);
-  //       CacheCleanup::cleanupUpload($this->uploadId, [
-  //         'status' => 'completed',
-  //         'upload_id' => $this->uploadId,
-  //       ]);
-  //       // RedisCleanupService::cleanupUpload($this->uploadId, [
-  //       //     'status' => 'completed',
-  //       //     'upload_id' => $this->uploadId,
-  //       // ]);
-  //     }
-
-  //     Log::info("ProcessZipJob completed", $result);
-  //     return $result;
-  //   } catch (\Exception $e) {
-  //     $result['status'] = 'failed';
-  //     $result['error'] = $e->getMessage();
-  //     $result['completed_at'] = now()->toIso8601String();
-  //     $result['duration_seconds'] = round(microtime(true) - $startTime, 2);
-
-  //     $this->updateStatus('failed', 0, $result);
-
-  //     // Cleanup saat error
-  //     if ($this->uploadId) {
-  //       CacheCleanup::driver($this->cache_driver);
-  //       CacheCleanup::cleanupUpload($this->uploadId, [
-  //         'status' => 'failed',
-  //         'upload_id' => $this->uploadId,
-  //         'error' => $e->getMessage()
-  //       ]);
-  //       // RedisCleanupService::cleanupUpload($this->uploadId, [
-  //       //     'status' => 'failed',
-  //       //     'upload_id' => $this->uploadId,
-  //       //     'error' => $e->getMessage(),
-  //       // ]);
-  //     }
-
-  //     Log::error("ProcessZipJob failed", [
-  //       'upload_id' => $this->uploadId,
-  //       'error' => $e->getMessage(),
-  //       'trace' => $e->getTraceAsString(),
-  //     ]);
-
-  //     throw $e;
-  //   }
-  // }
 }

@@ -14,6 +14,6 @@ class Lock
   /** relative to lock path */
   public static function path(?string $path = null) : string
   {
-    return Workspace::lockPath() . $path ? "/{$path}" : "";
+    return Workspace::lockPath() . ($path ? "/{$path}" : "");
   }
 }
