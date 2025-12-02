@@ -9,7 +9,6 @@ use Dochub\Workspace\Services\LockManager as ServicesLockManager;
 use Dochub\Workspace\Workspace;
 use Illuminate\Support\Facades\Config;
 
-
 // # Development (default)
 // LOCK_DRIVER=flock
 
@@ -269,7 +268,7 @@ class BlobLocalStorage
 
         try {
           $copied = stream_copy_to_stream($source, $dest, $size, 0);
-          $metadata["compresion_type"] = null;
+          $metadata["compression_type"] = null;
           if ($copied !== $size) {
             throw new \RuntimeException("Incomplete copy: {$copied}/{$size}");
           }
@@ -295,6 +294,9 @@ class BlobLocalStorage
 
   /**
    * file will be compressed if not binary and not already compressed
+   * @param string $sourcePath string file, misal DMC...xml
+   * @param string $hash dari $sourcePath
+   * @param array $metadata
    */
   private function storeFileAtomicCompress(string $sourcePath, string $hash, array &$metadata): void
   {
@@ -313,9 +315,11 @@ class BlobLocalStorage
 
     // 🔑 Deteksi tipe file dari metadata
     $mime = $metadata['mime'] ?? $this->detectMimeType($hash);
+    $metadata['compression_type'] = null;
     $isBinary = ($metadata['is_binary'] ?? ($metadata['is_binary'] = $this->isBinaryFile($sourcePath)));
     $isAlreadyCompressed = $this->isAlreadyCompressedMime($mime);
 
+    
     // 🔑 Putuskan apakah perlu dikompres
     $shouldCompress = !$isBinary && !$isAlreadyCompressed;
     $metadata["stored_size_bytes"] = 0;
@@ -323,6 +327,7 @@ class BlobLocalStorage
     $this->lockManager->withLock(
       $lockKey,
       function () use ($sourcePath, $tempPath, $blobPath, $shouldCompress, &$metadata) {
+        // Log::info("source: {$sourcePath}");
         // Cek ulang setelah lock
         if (file_exists($blobPath)) {
           return;
@@ -338,9 +343,11 @@ class BlobLocalStorage
         }
 
         try {
+          // dump($shouldCompress, $metadata);
           if ($shouldCompress) {
             // 💨 Kompresi streaming (tanpa load ke memory)
             $this->streamGzipCompress($source, $dest, $metadata);
+            // dd($shouldCompress, $metadata);
           } else {
             // 📁 Salin asli
             $size = $metadata["original_size_bytes"];
@@ -358,8 +365,11 @@ class BlobLocalStorage
           }
 
           $metadata["stored_size_bytes"] = filesize($blobPath);
+          // dd($shouldCompress, $metadata, pathinfo($blobPath));
 
           @chmod($blobPath, 0444);
+
+          // Log::info("blob: {$blobPath}");
 
           // 🔑 Simpan metadata kompresi
           // $storedSize = filesize($blobPath);
@@ -386,31 +396,39 @@ class BlobLocalStorage
    * Simpan metadata blob ke database
    */
   // private function storeMetadata(string $hash, int $size, array $metadata): void
-  private function storeMetadata(string $hash, int $size, array $metadata, ?string $compressionType = null): void
+  private function storeMetadata(string $hash, int $size, array $metadata): void
   {
+    // dd($metadata, (bool) $metadata['compression_type']);
     // Deteksi MIME jika belum ada
     $mime = $metadata['mime'] ?? $this->detectMimeType($hash);
     $isBinary = $metadata['is_binary'] ?? !$this->isTextMime($mime);
     $isAlreadyCompressed = $this->isAlreadyCompressedMime($mime);
 
-    // Simpan ke DB
-    BlobModel::create([
-      'hash' => $hash,
-      'mime_type' => $mime,
-      'is_binary' => $isBinary,
-      'original_size_bytes' => $size,
-      // 'stored_size_bytes' => $size, // disimpan asli (tanpa kompres untuk binary)
-      // 'is_stored_compressed' => false,
-      // 'compression_type' => null,
-      'is_already_compressed' => $isAlreadyCompressed,
-
-      'is_stored_compressed' => (bool) $compressionType,
-      'compression_type' => $compressionType ?? null,
-      'stored_size_bytes' => $metadata['stored_size_bytes'],
-      // 'is_binary' => $isBinary,
-      // 'mime_type' => $mime,
-      // 'is_already_compressed' => $isAlreadyCompressed,
-    ]);
+    try {
+      // Simpan ke DB
+      $data = ([
+        'hash' => $hash,
+        'mime_type' => $mime,
+        'is_binary' => $isBinary,
+        'original_size_bytes' => $size,
+        // 'stored_size_bytes' => $size, // disimpan asli (tanpa kompres untuk binary)
+        // 'is_stored_compressed' => false,
+        // 'compression_type' => null,
+        'is_already_compressed' => $isAlreadyCompressed,
+  
+        'is_stored_compressed' => $metadata['compression_type'] ? true : false,
+        'compression_type' => $metadata['compression_type'] ?? null,
+        'stored_size_bytes' => $metadata['stored_size_bytes'],
+        // 'is_binary' => $isBinary,
+        // 'mime_type' => $mime,
+        // 'is_already_compressed' => $isAlreadyCompressed,
+      ]);
+      BlobModel::create($data);
+    } 
+    catch (\Throwable $th) {
+      // dd($isBinary, $isAlreadyCompressed, $metadata, $th);
+      //throw $th;
+    }
   }
 
   /**
@@ -592,6 +610,9 @@ class BlobLocalStorage
 
   /**
    * Kompresi streaming (tanpa memory overhead)
+   * @param resource $source
+   * @param resource $dest
+   * @param array $metadata
    */
   private function streamGzipCompress($source, $dest, array &$metadata): void
   {
@@ -628,7 +649,7 @@ class BlobLocalStorage
       fwrite($dest, $final);
     }
 
-    $metadata["compresion_type"] = 'gzip';
+    $metadata["compression_type"] = 'gzip';
   }
 
   /**

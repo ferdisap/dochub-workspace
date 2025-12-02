@@ -283,6 +283,11 @@ class ProcessZipJob implements ShouldQueue
       // Update status ke Redis
       $this->updateStatus('processing', 0);
 
+      // $md = $this->cache->get($this->uploadId);
+      // $md = json_decode($md, true);
+      // Log::info("status ProcessZipJob completed", [$md['status']]);
+      // dd($md);
+
       // #2. Ekstrak zip ke temporary directory
       $extractDir = $this->extractZip($this->filePath);
 
@@ -301,16 +306,23 @@ class ProcessZipJob implements ShouldQueue
 
       $this->updateStatus('completed', 100, $result);
 
+      // $md = $this->cache->get($this->uploadId);
+      // $md = json_decode($md, true);
+      // Log::info("status ProcessZipJob completed", [$md['status']]);
+
       // 🔑 Auto-cleanup jika sync mode atau sudah selesai
       if ($this->uploadId) {
-        // $this->cache->delete($this->uploadId);
+        // $this->cache->delete($this->filePath);
         $this->cache->cleanupUpload($this->uploadId, [
           'status' => 'completed',
           'upload_id' => $this->uploadId,
+          'uploaded_chunks' => $totalChunk
         ]);
       }
 
-      Log::info("ProcessZipJob completed", $result);
+      // Log::info("ProcessZipJob completed", $result);
+
+      
       return $result;
     } catch (\Exception $e) {
       $result['status'] = 'failed';

@@ -63,7 +63,7 @@ class Blob
       } catch (\Exception $e) {
         $callback('', $relativePath, $filePath, $e, $processed, $total_files);
       }
-    }
+    } 
 
     $wsFiles = array_map(fn ($wsFile) => $wsFile->toArray(), $wsFiles);
     $version = ManifestVersionParser::makeVersion();

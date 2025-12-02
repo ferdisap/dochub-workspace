@@ -22,11 +22,10 @@ class NativeCache implements Cacheable, CacheCleanup
   {
     // Jika ada store custom, gunakan.
     // Jika tidak ditentukan, gunakan default Laravel Cache store.
-    $this->store = LaravelCache::store();
     $this->ttl = env('upload.cache.ttl', 3600);
-
     $this->_driver = env('upload.cache.driver', 'file');
     $this->_prefix = env('upload.cache.prefix', 'upload:');
+    $this->store = LaravelCache::driver($this->_driver);
   }
 
   public function driver(?string $d = null)
@@ -39,6 +38,13 @@ class NativeCache implements Cacheable, CacheCleanup
     $cacheKey = $this->_prefix . $key;
 
     // Laravel cache otomatis drop expired data
+    // $key === $uploadId;
+    // $fs = new FileStore(new Filesystem(), config('config.file.path'), null);
+    // $path = $fs->path($cacheKey);
+    // $gt = $fs->get($cacheKey);
+    // $gt = $this->store->get($cacheKey);
+    // dd($path, $cacheKey, $gt);
+    // dd($path, $gt, $cacheKey);
     return $this->store->get($cacheKey);
   }
 
@@ -85,12 +91,12 @@ class NativeCache implements Cacheable, CacheCleanup
    * Tidak semua driver mendukung listing keys.
    * Jadi kita simpan daftar key secara manual.
    * nanti dikembangkan, jika 'database', ambil di db, jika di file maka nanti ambil pakai regex
+   * masih belum benar untuk fungsi ini, karena tidak semua support mencari seluruh keys dengan prefix (kecuali database). 
+   * Kalaupun bisa misal pakai scan, itu sangat lambat
    */
   public function keys(): array
   {
-    $driver = $driver ?? config('cache.default');
-
-    return match ($driver) {
+    return match ($this->_driver) {
       'file' => FileCache::keys($this->_prefix),
       'database' => DatabaseCache::keys($this->_prefix),
       'redis' => RedisCache::keys($this->_prefix),
@@ -150,18 +156,19 @@ class NativeCache implements Cacheable, CacheCleanup
 
       // Hapus file fisik jika ada (sama seperti RedisCleanupService)
       if (isset($metadata['upload_id'])) {
-        $uploadDir = config('upload.driver.native.root') . "/{$uploadId}";
+        $driverUpload = config('upload.driver') === 'tus' ? 'tus' : 'file'; // walau auto adalah file
+        $uploadDir = config("upload.driver.{$driverUpload}.root") . "/{$uploadId}";
         if (is_dir($uploadDir)) {
           $this->deleteDirectory($uploadDir);
         }
       }
 
-      Log::info("Cache upload cleaned up", [
-        'upload_id' => $uploadId,
-        'driver' => $driver ?? config('cache.default'),
-        'reason' => $metadata['status'] ?? 'auto',
-        'chunks' => $metadata['uploaded_chunks'] ?? 0,
-      ]);
+      // Log::info("Cache upload cleaned up", [
+      //   'upload_id' => $uploadId,
+      //   'driver' => $driver ?? config('cache.default'),
+      //   'reason' => $metadata['status'] ?? 'auto',
+      //   'chunks' => $metadata['uploaded_chunks'] ?? 0,
+      // ]);
 
       return $deleted;
     } catch (\Exception $e) {
@@ -175,7 +182,7 @@ class NativeCache implements Cacheable, CacheCleanup
   }
 
   /**
-   * Hapus direktori rekursif (shared dengan RedisCleanupService)
+   * Hapus direktori upload file rekursif (shared dengan RedisCleanupService)
    */
   private function deleteDirectory(string $dir): void
   {
@@ -239,7 +246,7 @@ class NativeCache implements Cacheable, CacheCleanup
 
   /**
    * Cleanup dengan SCAN (lebih efisien)
-   * belum di buat untuk memcached. Baru support redis
+   * belum di buat untuk memcached/file. Baru support redis
    */
   private function cleanupWithScan(int $batchSize): int
   {

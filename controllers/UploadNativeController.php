@@ -5,6 +5,7 @@ namespace Dochub\Controller;
 use Dochub\Job\ProcessZipJob;
 use Dochub\Job\UploadCleanupJob;
 use Dochub\Upload\Cache\NativeCache;
+use Dochub\Workspace\Models\Manifest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redis;
@@ -24,6 +25,41 @@ class UploadNativeController extends UploadController
   {
     $this->cache = new NativeCache();
   }
+
+  /** @deprecated */
+  public function checkUpload(Request $request)
+  {
+    $uploadId = $request->header('X-Upload-ID');
+    $metadata = $this->cache->get($uploadId);
+
+    if($metadata && isset($metadata['status'])){
+      // uploading, processing, uploaded
+      // processing, completed, failed
+      if($metadata['status'] === 'uploaded'){
+        return response(null,304); // artinya sudah ada file dengan uploadId, bukan chunkId
+      } 
+      elseif($metadata['status'] === 'processing'){
+        return response(null,202); // artinya masih di process. 
+      }
+      else {
+        return response(null,102); // artinya uploadan (zip) masih di sedang upload oleh client. Hati2 dengan net::ERR_EMPTY_RESPONS
+      }
+    }
+    return response(null,404); // artinya tidak ada data di cache dengan uploadId
+  }
+
+  public function checkChunk(Request $request)
+  {
+    $uploadId = $request->header('X-Upload-ID');
+    $chunkId = $request->header('X-Chunk-ID');
+
+    if($this->isChunkHasUploaded($uploadId, $chunkId)){
+      return response(null, 304);
+    } else {
+      return response(null, 404);
+    }
+  }
+
   /**
    * POST /upload/chunk
    * Terima chunk dengan streaming I/O (low memory)
@@ -33,11 +69,15 @@ class UploadNativeController extends UploadController
     // 🔑 Validasi manual (hindari load ke memory)
     $this->validateChunkHeaders($request);
 
-    $uploadId = $request->header('X-Upload-ID');
+    $uploadId = $request->header('X-Upload-Id');
+    $chunkId = $request->header('X-Chunk-Id');
     $chunkIndex = (int) $request->header('X-Chunk-Index');
+    // $chunkSize = (int) $request->header('X-Chunk-Size');    
     $totalChunks = (int) $request->header('X-Total-Chunks');
     $fileName = $request->header('X-File-Name');
     $fileSize = (int) $request->header('X-File-Size');
+
+    // tes apakah chunk sudah di upload 
 
     // Validasi dasar
     if (!$uploadId || $chunkIndex < 0 || $totalChunks <= 0) {
@@ -60,12 +100,13 @@ class UploadNativeController extends UploadController
       return response()->json(['error' => 'Failed to save chunk'], 500);
     }
 
-    $this->updateUploadMetadata($uploadId, [
+    $this->updateUploadMetadata($uploadId, $chunkId, [
       'upload_id' => $uploadId,
       'file_name' => $fileName,
       'file_size' => $fileSize,
       'total_chunks' => $totalChunks,
       'last_chunk' => $chunkIndex,
+      'status' => 'uploading'
     ]);
 
     // $metadata = $this->cache->get($uploadId);
@@ -89,7 +130,22 @@ class UploadNativeController extends UploadController
     ]);
 
     $uploadId = $request->upload_id;
-    // $fileName = $request->file_name;
+    
+    // check wheter the uploadId hash in place or not
+    // $metadata = $this->cache->get($uploadId);
+    // if($metadata) $metadata = json_decode($metadata, true);
+    // $uploadDir = $metadata['upload_dir'];
+    // $fileName = $metadata['file_name'];
+    // $filePath = $uploadDir . "/" . $fileName;
+
+    // try{
+    //   if(!($final = fopen($filePath, 'wb'))){
+    //     dd('fufuafa');
+    //   }
+    //   fclose($final);
+    // } catch(\Throwable $th){
+    //   // dd('fufuafa', $th);
+    // }
 
     // Cek metadata
     $metadata = $this->cache->get($uploadId);
@@ -132,6 +188,14 @@ class UploadNativeController extends UploadController
     ]);
   }
 
+  public function tesCheckChunk(Request $request, string $uploadId, string $chunkId){
+    $metadata = $this->cache->get($uploadId);
+    $metadata = json_decode($metadata, true);
+    // dd($this->cache->set('fasa0a-a=ufu', 'fafa:asz'));
+    // dd($this->cache->keys());
+    dd($metadata, $this->cache->driver());
+    dd($id, $chunkId);
+  }
   public function tesJob()
   {
     // $job = new ProcessZipJob('', Auth::user()->id, 1);
@@ -217,13 +281,27 @@ class UploadNativeController extends UploadController
   //   return in_array($header, ["PK\x03\x04", "PK\x05\x06", "PK\x07\x08"], true);
   // }
 
+  private function isChunkHasUploaded(string $uploadId, $chunkId) :bool
+  {
+    $metadataJson = $this->cache->get($uploadId);
+    $metadata = json_decode($metadataJson, true);
+    return ((isset($metadata['chunks_id']) && in_array($chunkId, $metadata['chunks_id'])));
+  }
+
   /**
    * Update metadata upload
    */
-  private function updateUploadMetadata(string $uploadId, array $data): void
+  private function updateUploadMetadata(string $uploadId, string $chunkId, array $data): void
   {
+    // $metadataJson = $this->cache->get($uploadId);
+    // $metadata = $metadataJson ? json_decode($metadataJson, true) : [];
     $metadata = $this->cache->get($uploadId);
     $existing = $metadata ? json_decode($metadata, true) : [];
+
+    // set chunk
+    $existing['chunks_id'] = isset($existing['chunks_id']) ? $existing['chunks_id'] : [];
+    if(!in_array($chunkId, $existing['chunks_id'])) $existing['chunks_id'][] = $chunkId;
+
 
     $updated = array_merge($existing, $data, [
       'uploaded_chunks' => ($existing['uploaded_chunks'] ?? 0) + 1,
@@ -233,9 +311,15 @@ class UploadNativeController extends UploadController
     // 🔑 TTL dinamis berdasarkan , agar ke hapus otomatis
     $ttl = env('upload.cache.ttl', 86400); // 24jam
 
+    // // jika sudah bernial $isDone = 1;
+    $isDone = $updated['uploaded_chunks'] / $updated['total_chunks'];
+    $existing['status'] = $isDone >= 1.0 ? 'uploaded' : 'uploading'; // uploading, processing, uploaded
+
     // Jika upload sudah 100% dan ada job_id → perpendek TTL
     $progress = $updated['total_chunks'] ?
       ($updated['uploaded_chunks'] / $updated['total_chunks']) : 0;
+    // $progress = $updated['total_chunks'] ? ($isDone) : 0;
+
 
     if ($progress >= 1.0 && isset($updated['job_id'])) {
       $ttl = 300; // 5 menit
@@ -285,12 +369,18 @@ class UploadNativeController extends UploadController
   private function validateChunkHeaders(Request $request): void
   {
     // Cek content type
+
     $contentType = $request->header('Content-Type', '');
     if (
       !str_contains($contentType, 'multipart/form-data') &&
       !str_contains($contentType, 'application/octet-stream')
     ) {
       throw new \InvalidArgumentException('Invalid Content-Type');
+    }
+    // check chunkId
+    $chunkId = $request->header('X-Chunk-Id');
+    if($chunkId === 'null' || $chunkId === '0' || $chunkId === '' || !$chunkId){
+      throw new \InvalidArgumentException('Chunk id must be provided');
     }
 
     // Cek content length

@@ -19,16 +19,19 @@ Route::prefix('dochub')->middleware('web')->group(function () {
   // Route::post('/upload/{id}', [UploadController::class, 'upload']);
   // Route::get('/upload/{id}/status', [UploadController::class, 'getUploadStatus']); // GET /upload/abc123/status
   // Route::delete('/upload/{id}', [UploadController::class, 'deleteUpload']);        // DELETE /upload/abc123
-
   // Chunked native upload
   // tambahkan ->middleware('throttle:100,1'); // 100 chunk/menit
   Route::get('/upload/config', [UploadController::class, 'getConfig'])->middleware('auth')->name('dochub.upload.config');
-  Route::post('/upload/chunk', [UploadNativeController::class, 'uploadChunk'])->middleware('auth')->name('dochub.upload.chunk');
+  Route::post('/upload/check', [UploadNativeController::class, 'checkUpload'])->middleware('auth')->name('dochub.upload.check');
+  Route::post('/upload/chunk', [UploadNativeController::class, 'uploadChunk'])->middleware('auth')->name('dochub.upload.chunk.check');
+  Route::post('/upload/chunk/check', [UploadNativeController::class, 'checkChunk'])->middleware('auth')->name('dochub.upload.check');
   Route::post('/upload/process', [UploadNativeController::class, 'processUpload'])->middleware('auth')->name('dochub.upload.process');
   Route::get('/upload/{id}/status', [UploadNativeController::class, 'getUploadStatus'])->middleware('auth')->name('dochub.upload.status');
   Route::delete('/upload/{id}/delete', [UploadNativeController::class, 'deleteUpload'])->middleware('auth')->name('dochub.upload.delete');
 
   Route::get('/manifest', [UploadController::class, 'getManifest'])->middleware('auth')->name('dochub.manifest');
+
+  Route::get('/tes/chunk/{uploadId}/{chunkId}', [UploadNativeController::class, 'tesCheckChunk']);
 
   // Route::get("/tes", [UploadNativeController::class, 'tesJob']);
 
