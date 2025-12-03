@@ -48,6 +48,11 @@ class NativeCache implements Cacheable, CacheCleanup
     return $this->store->get($cacheKey);
   }
 
+  public function getArray($key) : array {
+    $data = $this->get($key) ?? [];
+    return is_array($data) ? $data : json_decode($data, true);
+  }
+
   public function set(string $key, $value)
   {
     $cacheKey = $this->_prefix . $key;
@@ -120,6 +125,7 @@ class NativeCache implements Cacheable, CacheCleanup
     string $uploadId,
     array $metadata,
   ): bool {
+    if(count($metadata) < 1) return true; // artinya sudah dibersihkan
     // Cek status selesai
     $isCompleted = (
       ($metadata['status'] ?? '') === 'completed' ||
@@ -129,8 +135,9 @@ class NativeCache implements Cacheable, CacheCleanup
     // Cek progress 100%
     $progress = $metadata['total_chunks'] ?
       ($metadata['uploaded_chunks'] ?? 0) / $metadata['total_chunks'] : 0;
-
+      
     $isFullyUploaded = $progress >= 1.0;
+
 
     // Cleanup jika: selesai diproses ATAU upload 100% tapi belum diproses > 5 menit
     $shouldCleanup = $isCompleted ||
@@ -147,6 +154,7 @@ class NativeCache implements Cacheable, CacheCleanup
     string $uploadId,
     array $metadata = []
   ): bool {
+    if(count($metadata) < 1) return true; // artinya sudah dibersihkan
 
     $key = $this->_prefix . $uploadId;
 

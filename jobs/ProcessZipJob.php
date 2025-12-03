@@ -24,6 +24,10 @@ use Illuminate\Queue\Events\JobQueued;
 use Illuminate\Support\Facades\Event;
 use TusPhp\Cache\Cacheable;
 
+// jenis jenis status
+// uploading, processing, uploaded => di controller
+// processing, completed, failed => di process zip job
+
 class ProcessZipJob implements ShouldQueue
 {
   use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -42,7 +46,8 @@ class ProcessZipJob implements ShouldQueue
   /**
    * Create a new job instance.
    */
-  public function __construct(string $metadata, int $userId) {
+  public function __construct(string $metadata, int $userId)
+  {
     $this->metadata = $metadata;
     $this->userId = $userId;
   }
@@ -53,11 +58,19 @@ class ProcessZipJob implements ShouldQueue
    * dispatch($job)->onQueue('uploads');
    * dd($job->id);
    */
-  public static function withId(...$args): self
+  public static function withId(string $metadata, int $userId): self
   {
-    $job = new self(...$args);
-    Event::listen(JobQueued::class, function (JobQueued $event) use (&$job) {
+    $job = new self($metadata, $userId);
+    Event::listen(JobQueued::class, function (JobQueued $event) use (&$job, $metadata) {
+      // set job id for job class
       $job->id = $event->id;
+      // set job id to metadata
+      $data = json_decode($metadata, true);
+      $data["job_id"] = $job->id;
+      // save metadata to cache
+      $this->uploadId = $data['upload_id'];
+      $this->cache = new NativeCache();
+      $this->cache->set($this->uploadId, $data);
     });
     return $job;
   }
@@ -82,11 +95,11 @@ class ProcessZipJob implements ShouldQueue
 
 
     // Validasi ZIP
-    if (!$this->isValidZip($this->filePath)) {
-      unlink($this->filePath);
-      rmdir($uploadDir);
-      throw new \RuntimeException("Invalid ZIP file", 1);
-    }
+    // if (!$this->isValidZip($this->filePath)) {
+    //   unlink($this->filePath);
+    //   rmdir($uploadDir);
+    //   throw new \RuntimeException("Invalid ZIP file", 1);
+    // }
   }
 
   /**
@@ -96,9 +109,7 @@ class ProcessZipJob implements ShouldQueue
   {
     if (!$this->uploadId) return;
 
-    // $current = Redis::get("$this->uploadId}");
-    $current = $this->cache->get($this->uploadId);
-    $metadata = $current ? json_decode($current, true) : [];
+    $metadata = $this->cache->getArray($this->uploadId);
 
     $update = array_merge($metadata, [
       'status' => $status,
@@ -107,9 +118,8 @@ class ProcessZipJob implements ShouldQueue
     ], $data);
 
     // TTL dinamis
-    $ttl = $status === 'completed' ? 300 : 3600;
-    $this->cache->set($this->uploadId, json_encode($update), $ttl);
-    // Redis::setex(this->uploadId, $ttl, json_encode($update));
+    // $ttl = $status === 'completed' ? 300 : 3600;
+    $this->cache->set($this->uploadId, json_encode($update));
   }
 
   /**
@@ -194,7 +204,7 @@ class ProcessZipJob implements ShouldQueue
     $blob = new Blob();
     $totalprocessed = 0;
     $source = ManifestSourceParser::makeSource(ManifestSourceType::UPLOAD->value, "user-{$this->userId}");
-    $wsManifest = $blob->store($this->userId, $source, $files, function (string $hash, string $relativePath, string $absolutePath, ?\Exception $e, int $processed, int $total) use(&$totalprocessed, $unlinkIfSuccess){
+    $wsManifest = $blob->store($this->userId, $source, $files, function (string $hash, string $relativePath, string $absolutePath, ?\Exception $e, int $processed, int $total) use (&$totalprocessed, $unlinkIfSuccess) {
       if ($hash || ($e === null)) {
         if ($unlinkIfSuccess) unlink($absolutePath);
         if ($processed % 10 === 0 || $processed === $total) {
@@ -283,11 +293,6 @@ class ProcessZipJob implements ShouldQueue
       // Update status ke Redis
       $this->updateStatus('processing', 0);
 
-      // $md = $this->cache->get($this->uploadId);
-      // $md = json_decode($md, true);
-      // Log::info("status ProcessZipJob completed", [$md['status']]);
-      // dd($md);
-
       // #2. Ekstrak zip ke temporary directory
       $extractDir = $this->extractZip($this->filePath);
 
@@ -306,23 +311,19 @@ class ProcessZipJob implements ShouldQueue
 
       $this->updateStatus('completed', 100, $result);
 
-      // $md = $this->cache->get($this->uploadId);
-      // $md = json_decode($md, true);
-      // Log::info("status ProcessZipJob completed", [$md['status']]);
-
       // 🔑 Auto-cleanup jika sync mode atau sudah selesai
-      if ($this->uploadId) {
-        // $this->cache->delete($this->filePath);
-        $this->cache->cleanupUpload($this->uploadId, [
-          'status' => 'completed',
-          'upload_id' => $this->uploadId,
-          'uploaded_chunks' => $totalChunk
-        ]);
-      }
+      // $this->cache->delete($this->uploadId);
+      // if ($this->uploadId) {
+      //   $this->cache->cleanupUpload($this->uploadId, [
+      //     'status' => 'completed',
+      //     'upload_id' => $this->uploadId,
+      //     'uploaded_chunks' => $totalChunk
+      //   ]);
+      // }
 
       // Log::info("ProcessZipJob completed", $result);
 
-      
+
       return $result;
     } catch (\Exception $e) {
       $result['status'] = 'failed';
@@ -333,13 +334,14 @@ class ProcessZipJob implements ShouldQueue
       $this->updateStatus('failed', 0, $result);
 
       // Cleanup saat error
-      if ($this->uploadId) {
-        $this->cache->cleanupUpload($this->uploadId, [
-          'status' => 'failed',
-          'upload_id' => $this->uploadId,
-          'error' => $e->getMessage()          
-        ]);
-      }
+      // $this->cache->delete($this->uploadId);
+      // if ($this->uploadId) {
+      //   $this->cache->cleanupUpload($this->uploadId, [
+      //     'status' => 'failed',
+      //     'upload_id' => $this->uploadId,
+      //     'error' => $e->getMessage()          
+      //   ]);
+      // }
 
       Log::error("ProcessZipJob failed", [
         'upload_id' => $this->uploadId,

@@ -37,11 +37,11 @@ class UploadServiceProvider extends ServiceProvider
     // }
 
     // Log untuk debugging
-    Log::info('Upload system initialized', [
-      'driver' => config('upload.default'),
-      'max_size' => config('upload.max_size'),
-      'tus_redis' => config('upload.driver.tus.use_redis'),
-    ]);
+    // Log::info('Upload system initialized', [
+    //   'driver' => config('upload.default'),
+    //   'max_size' => config('upload.max_size'),
+    //   'tus_redis' => config('upload.driver.tus.use_redis'),
+    // ]);
 
     // bisa di tiadakan syntax dibawah ini jika mau
     // 🔑 DETEKSI DI AWAL BOOTSTRAP
@@ -62,11 +62,11 @@ class UploadServiceProvider extends ServiceProvider
     // config(['upload.driver' => EnvironmentDetector::uploadStrategy()]);
 
     // Log untuk debugging
-    Log::info("Environment detected: {$envType}", [
-      'config' => $uploadConfig,
-      'memory_limit' => ini_get('memory_limit'),
-      'max_execution_time' => ini_get('max_execution_time'),
-    ]);
+    // Log::info("Environment detected: {$envType}", [
+    //   'config' => $uploadConfig,
+    //   'memory_limit' => ini_get('memory_limit'),
+    //   'max_execution_time' => ini_get('max_execution_time'),
+    // ]);
   }
 
   private function validateConfig()

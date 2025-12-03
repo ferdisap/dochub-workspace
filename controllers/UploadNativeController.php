@@ -10,6 +10,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redis;
 
+// jenis jenis status
+// uploading, processing, uploaded => di controller
+// processing, completed, failed => di process zip job
+
 /**
  * Catatan Penting untuk Produksi
  * Pastikan php://input tersedia
@@ -24,28 +28,6 @@ class UploadNativeController extends UploadController
   public function __construct()
   {
     $this->cache = new NativeCache();
-  }
-
-  /** @deprecated */
-  public function checkUpload(Request $request)
-  {
-    $uploadId = $request->header('X-Upload-ID');
-    $metadata = $this->cache->get($uploadId);
-
-    if($metadata && isset($metadata['status'])){
-      // uploading, processing, uploaded
-      // processing, completed, failed
-      if($metadata['status'] === 'uploaded'){
-        return response(null,304); // artinya sudah ada file dengan uploadId, bukan chunkId
-      } 
-      elseif($metadata['status'] === 'processing'){
-        return response(null,202); // artinya masih di process. 
-      }
-      else {
-        return response(null,102); // artinya uploadan (zip) masih di sedang upload oleh client. Hati2 dengan net::ERR_EMPTY_RESPONS
-      }
-    }
-    return response(null,404); // artinya tidak ada data di cache dengan uploadId
   }
 
   public function checkChunk(Request $request)
@@ -109,7 +91,6 @@ class UploadNativeController extends UploadController
       'status' => 'uploading'
     ]);
 
-    // $metadata = $this->cache->get($uploadId);
     return response()->json([
       'chunk_index' => $chunkIndex,
       'status' => 'uploaded',
@@ -124,75 +105,66 @@ class UploadNativeController extends UploadController
    */
   public function processUpload(Request $request)
   {
+    // untuk debug
+    // return response()->json([
+    //   'upload_id' => 'fufafa',
+    //   'job_id' => '0',
+    //   'status' => 'processing',
+    // ]);
+
     $request->validate([
       'upload_id' => 'required|string',
       'file_name' => 'required|string',
     ]);
 
     $uploadId = $request->upload_id;
-    
-    // check wheter the uploadId hash in place or not
-    // $metadata = $this->cache->get($uploadId);
-    // if($metadata) $metadata = json_decode($metadata, true);
-    // $uploadDir = $metadata['upload_dir'];
-    // $fileName = $metadata['file_name'];
-    // $filePath = $uploadDir . "/" . $fileName;
-
-    // try{
-    //   if(!($final = fopen($filePath, 'wb'))){
-    //     dd('fufuafa');
-    //   }
-    //   fclose($final);
-    // } catch(\Throwable $th){
-    //   // dd('fufuafa', $th);
-    // }
 
     // Cek metadata
-    $metadata = $this->cache->get($uploadId);
-    if (!$metadata) {
+    $data = $this->cache->getArray($uploadId);
+    if (count($data) < 1) {
       return response()->json(['error' => 'Upload not found'], 404);
     }
-
-    $data = json_decode($metadata, true);
 
     // Gabung chunk
     $uploadDir = config('upload.driver.native.root') . "/{$uploadId}";
     $data['upload_dir'] = $uploadDir;
+    
+    // Update metadata
+    $data['job_id'] = 0;
+    $data['status'] = 'processing';
 
-    // Dispatch job
+    // Dispatch job untuk prodcution
     // $job = ProcessZipJob::withId(json_encode($data), Auth::user()->id);
     // dispatch($job)->onQueue('uploads');
     // $jobId = $job->id;
-    $jobId = 0;
     try {
+      // untuk debug
       ProcessZipJob::dispatchSync(json_encode($data), Auth::user()->id);
-      $jobId = 0;
+      // set job id to metadata
+      $data = $this->cache->getArray($uploadId);
+      $data["job_id"] = 0;
+      // save metadata to cache
+      $this->cache->set($uploadId, $data);
     } catch (\Throwable $th) {
       dd($th);
       return;
     }
 
-    // Update metadata
-    $data['job_id'] = $jobId;
-    $data['status'] = 'processing';
     // Redis::setex($uploadId, 3600, json_encode($data));
-    $this->cache->set($uploadId, json_encode($data), 3600);
+    // $this->cache->set($uploadId, json_encode($data), 3600);
 
     // cleanup
     // dispatch(new UploadCleanupJob())->onQueue('cleanup')->delay(now()->addSeconds(30));
 
     return response()->json([
       'upload_id' => $uploadId,
-      'job_id' => $jobId,
+      'job_id' => $data['job_id'],
       'status' => 'processing',
     ]);
   }
 
   public function tesCheckChunk(Request $request, string $uploadId, string $chunkId){
-    $metadata = $this->cache->get($uploadId);
-    $metadata = json_decode($metadata, true);
-    // dd($this->cache->set('fasa0a-a=ufu', 'fafa:asz'));
-    // dd($this->cache->keys());
+    $metadata = $this->cache->getArray($uploadId);
     dd($metadata, $this->cache->driver());
     dd($id, $chunkId);
   }
@@ -230,31 +202,23 @@ class UploadNativeController extends UploadController
     // $metadata = \Illuminate\Support\Facades\Redis::get($id);
 
     // Jika tidak ada di Redis, coba cache
-    $metadata = $this->cache->get($id);
+    $data = $this->cache->getArray($id);
 
-    if (!$metadata) {
+    if (count($data) < 1) {
       return response()->json(['error' => 'Upload not found'], 404);
     }
 
-    $data = json_decode($metadata, true);
+    // 🔑 Auto-cleanup dari cache jika sudah selesai
+    $cleaned = true; // untuk debut, sehingga tidak dihapus (overwrite)
+    // $cleaned = $this->cache->cleanupIfCompleted($id, $data);
 
-    // // 🔑 Auto-cleanup dari cache jika sudah selesai
-    // $wasCleaned = false;
-    $wasCleaned = $this->cache->cleanupIfCompleted($id, $data);
-
-    // // Cek Redis dulu
-    // if ($this->cache->driver() === 'redis') {
-    // $wasCleaned = RedisCleanup::cleanupIfCompleted($id, $data);
-    // }
-    // Jika tidak ada di Redis, cek cache
-    // else {
-    // $wasCleaned = CacheCleanup::cleanupIfCompleted($id, $data);
-    // }
-
-    if ($wasCleaned) {
+    if ($cleaned) {
       return response()->json([
-        'id' => $id,
-        'status' => 'cleaned_up',
+        'file_name' => $data['file_name'],
+        'job_id' => $data['job_id'],
+        'status' => $data['status'],
+        'file_size' => $data['file_size'],
+        'total_chunks' => $data['total_chunks'],
         'message' => 'Upload completed and cleaned up'
       ]);
     }
@@ -262,7 +226,8 @@ class UploadNativeController extends UploadController
     // Return status normal
     return response()->json([
       'id' => $id,
-      'status' => $data['status'] ?? 'uploaded',
+      // 'status' => $data['status'] ?? 'uploaded',
+      'status' => 'processing', // untuk debug saja
       'file_name' => $data['file_name'] ?? null,
       'file_size' => $data['file_size'] ?? 0,
       'total_chunks' => $data['total_chunks'] ?? 0,
@@ -283,8 +248,7 @@ class UploadNativeController extends UploadController
 
   private function isChunkHasUploaded(string $uploadId, $chunkId) :bool
   {
-    $metadataJson = $this->cache->get($uploadId);
-    $metadata = json_decode($metadataJson, true);
+    $metadata = $this->cache->getArray($uploadId);
     return ((isset($metadata['chunks_id']) && in_array($chunkId, $metadata['chunks_id'])));
   }
 
@@ -293,18 +257,15 @@ class UploadNativeController extends UploadController
    */
   private function updateUploadMetadata(string $uploadId, string $chunkId, array $data): void
   {
-    // $metadataJson = $this->cache->get($uploadId);
-    // $metadata = $metadataJson ? json_decode($metadataJson, true) : [];
-    $metadata = $this->cache->get($uploadId);
-    $existing = $metadata ? json_decode($metadata, true) : [];
+    $metadata = $this->cache->getArray($uploadId) ?? [];
 
     // set chunk
-    $existing['chunks_id'] = isset($existing['chunks_id']) ? $existing['chunks_id'] : [];
-    if(!in_array($chunkId, $existing['chunks_id'])) $existing['chunks_id'][] = $chunkId;
+    $metadata['chunks_id'] = isset($metadata['chunks_id']) ? $metadata['chunks_id'] : [];
+    if(!in_array($chunkId, $metadata['chunks_id'])) $metadata['chunks_id'][] = $chunkId;
 
 
-    $updated = array_merge($existing, $data, [
-      'uploaded_chunks' => ($existing['uploaded_chunks'] ?? 0) + 1,
+    $updated = array_merge($metadata, $data, [
+      'uploaded_chunks' => ($metadata['uploaded_chunks'] ?? 0) + 1,
       'updated_at' => now()->timestamp,
     ]);
 
@@ -313,7 +274,7 @@ class UploadNativeController extends UploadController
 
     // // jika sudah bernial $isDone = 1;
     $isDone = $updated['uploaded_chunks'] / $updated['total_chunks'];
-    $existing['status'] = $isDone >= 1.0 ? 'uploaded' : 'uploading'; // uploading, processing, uploaded
+    $metadata['status'] = $isDone >= 1.0 ? 'uploaded' : 'uploading'; // uploading, processing, uploaded
 
     // Jika upload sudah 100% dan ada job_id → perpendek TTL
     $progress = $updated['total_chunks'] ?

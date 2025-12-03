@@ -57,7 +57,7 @@
         <div v-if="result" class="result" :class="result.type">
             <div class="result-icon">
                 <svg
-                    v-if="result.type === 'success'"
+                    v-if="result.type === 'completed'"
                     xmlns="http://www.w3.org/2000/svg"
                     width="24"
                     height="24"
@@ -111,7 +111,10 @@ import {
     EndData,
     ErrorData,
     formatBytes,
+    formatDuration,
+    ProcessedData,
     ProgressData,
+    UploadedData,
 } from "./ChunkUploadManager";
 
 const environment = ref("detecting...");
@@ -143,7 +146,9 @@ const uploadManager = new ChunkedUploadManager();
 onMounted(async () => {
     uploadManager.onStart = handleStart;
     uploadManager.onProgress = handleProgress;
-    uploadManager.onEnd = handleUploadComplete;
+    uploadManager.onUploaded = handleUploaded;
+    uploadManager.onProcessed = handleProcessing;
+    uploadManager.onEnd = handleCompleted;
     uploadManager.onError = handleError;
 
     await uploadManager.initialize();
@@ -211,23 +216,46 @@ const handleProgress = (data: ProgressData) => {
     // }
 };
 
-const handleUploadComplete = (data: EndData) => {
+const handleCompleted = (data: EndData) => {
     uploading.value = false;
+    const duration = formatDuration((Date.now() - startTime.value!));
     result.value = {
         type: data.status
-            ? data.status === "error"
+            ? data.status === "failed"
                 ? data.status
-                : "success"
-            : "success",
+                : "completed"
+            : "completed",
         title: "Upload Completed",
-        message: `${data.fileName} is ${data.status}.`,
+        message: `${data.fileName} is ${data.status}. Total size is ${formatBytes(data.totalBytes)}. Duration is ${duration}.`,
         jobId: data.jobId,
+    };
+};
+
+const handleUploaded = (data: UploadedData) => {
+    uploading.value = false;
+    const duration = formatDuration((Date.now() - startTime.value!));
+    result.value = {
+        type: data.status,
+        title: "File Uploaded",
+        message: `${data.fileName} is ${data.status}. Total size is ${formatBytes(data.totalBytes)}. Duration is ${duration}.`,
+        jobId: 'fetching...',
+    };
+};
+
+const handleProcessing = (data: ProcessedData) => {
+    uploading.value = false;
+    const duration = formatDuration((Date.now() - startTime.value!));
+    result.value = {
+        type: data.status,
+        title: "Processing Uploaded File",
+        message: `${data.fileName} is ${data.status}. Total size is ${formatBytes(data.totalBytes)}. Duration is ${duration}.`,
+        jobId: String(data.jobId),
     };
 };
 
 const handleError = (data: ErrorData) => {
     handleProgress(data as ProgressData);
-    handleUploadComplete({
+    handleCompleted({
         fileName: data.fileName,
         uploadId: data.uploadId,
         totalChunks: data.totalChunks,
@@ -286,18 +314,19 @@ const showError = (title: string, message: string) => {
 // };
 
 const pollStatus = async (uploadId: string) => {
-    // const interval = setInterval(async () => {
-    //     try {
-    //         const stat = await uploadManager.getStatus(uploadId);
-    //         status.value = stat;
-    //         if (stat.status === "completed" || stat.error) {
-    //             clearInterval(interval);
-    //         }
-    //     } catch (error) {
-    //         console.error("Status check failed:", error);
-    //         clearInterval(interval);
-    //     }
-    // }, 2000);
+    const interval = setInterval(async () => {
+        try {
+            const stat = await uploadManager.getStatus(uploadId);
+            // console.log(stat);
+            // status.value = stat;
+            if (stat.status === "completed" || stat.error) {
+                clearInterval(interval);
+            }
+        } catch (error) {
+            console.error("Status check failed:", error);
+            clearInterval(interval);
+        }
+    }, 2000);
 };
 
 const cancel = () => {
@@ -462,16 +491,22 @@ const checkStatus = async () => {
     border-radius: 4px;
 }
 
-.result.success {
+.result.completed {
     background: #d4edda;
     border: 1px solid #c3e6cb;
     color: #155724;
 }
 
-.result.error {
+.result.failed {
     background: #f8d7da;
     border: 1px solid #f5c6cb;
     color: #721c24;
+}
+
+.result.processing, .result.uploaded {
+    background: #f5f8d7;
+    border: 1px solid #f6fac6;
+    color: #1a1a1a;
 }
 
 .result-icon {
@@ -485,7 +520,7 @@ const checkStatus = async () => {
     stroke-width: 2;
 }
 
-.result.success .result-icon svg {
+.result.completed .result-icon svg {
     stroke: #28a745;
 }
 
@@ -504,6 +539,7 @@ const checkStatus = async () => {
 }
 
 .job-info {
+    margin:0 0 0.5rem 2rem;
     display: flex;
     align-items: center;
     gap: 0.5rem;

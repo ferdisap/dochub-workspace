@@ -52,11 +52,11 @@ class TusServiceProvider extends ServiceProvider
     }
 
     // Log untuk debugging
-    Log::info("Environment detected: {$envType}", [
-      'config' => $uploadConfig,
-      'memory_limit' => ini_get('memory_limit'),
-      'max_execution_time' => ini_get('max_execution_time'),
-    ]);
+    // Log::info("Environment detected: {$envType}", [
+    //   'config' => $uploadConfig,
+    //   'memory_limit' => ini_get('memory_limit'),
+    //   'max_execution_time' => ini_get('max_execution_time'),
+    // ]);
   }
 
   /**
