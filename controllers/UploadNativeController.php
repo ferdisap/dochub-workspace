@@ -2,7 +2,7 @@
 
 namespace Dochub\Controller;
 
-use Dochub\Job\ProcessZipJob;
+use Dochub\Job\ZipProcessJob;
 use Dochub\Job\UploadCleanupJob;
 use Dochub\Upload\Cache\NativeCache;
 use Dochub\Workspace\Models\Manifest;
@@ -22,7 +22,6 @@ use Illuminate\Support\Facades\Redis;
  */
 class UploadNativeController extends UploadController
 {
-  // protected $cacheDriver = 'file';
   protected NativeCache $cache;
 
   public function __construct()
@@ -59,20 +58,17 @@ class UploadNativeController extends UploadController
     $fileName = $request->header('X-File-Name');
     $fileSize = (int) $request->header('X-File-Size');
 
-    // tes apakah chunk sudah di upload 
-
     // Validasi dasar
     if (!$uploadId || $chunkIndex < 0 || $totalChunks <= 0) {
       return response()->json(['error' => 'Invalid headers'], 400);
     }
 
     // Buat direktori upload
-    $uploadDir = config('upload.driver.native.root') . "/{$uploadId}";
+    $driverUpload = config('upload.driver') === 'tus' ? 'tus' : 'native'; // walau auto adalah file
+    $uploadDir = config("upload.driver.{$driverUpload}.root") . "/{$uploadId}";
     if (!is_dir($uploadDir)) {
       mkdir($uploadDir, 0755, true);
     }
-
-    // return response(['dd' => file_exists($uploadDir)],500); // true
 
     // 🔑 Simpan chunk dengan streaming
     $chunkPath = "{$uploadDir}/{$fileName}.part{$chunkIndex}";
@@ -111,7 +107,6 @@ class UploadNativeController extends UploadController
     //   'job_id' => '0',
     //   'status' => 'processing',
     // ]);
-
     $request->validate([
       'upload_id' => 'required|string',
       'file_name' => 'required|string',
@@ -124,9 +119,18 @@ class UploadNativeController extends UploadController
     if (count($data) < 1) {
       return response()->json(['error' => 'Upload not found'], 404);
     }
+    
+    // validasi apakah chunk sudah selesai di upload semua
+    if(!$this->check_progress($data)){
+      return response()->json(['error' => 'Chunk is not completely uploaded'], 422); // uncompressable content
+    }
+
+    // set all request param to metadata    
+    $data['tags'] = $request->get('tags') ?? null;
 
     // Gabung chunk
-    $uploadDir = config('upload.driver.native.root') . "/{$uploadId}";
+    $driverUpload = config('upload.driver') === 'tus' ? 'tus' : 'native'; // walau auto adalah file
+    $uploadDir = config("upload.driver.{$driverUpload}.root") . "/{$uploadId}";
     $data['upload_dir'] = $uploadDir;
     
     // Update metadata
@@ -134,31 +138,26 @@ class UploadNativeController extends UploadController
     $data['status'] = 'processing';
 
     // Dispatch job untuk prodcution
-    // $job = ProcessZipJob::withId(json_encode($data), Auth::user()->id);
-    // dispatch($job)->onQueue('uploads');
-    // $jobId = $job->id;
-    try {
-      // untuk debug
-      ProcessZipJob::dispatchSync(json_encode($data), Auth::user()->id);
-      // set job id to metadata
-      $data = $this->cache->getArray($uploadId);
-      $data["job_id"] = 0;
-      // save metadata to cache
-      $this->cache->set($uploadId, $data);
-    } catch (\Throwable $th) {
-      dd($th);
-      return;
-    }
-
-    // Redis::setex($uploadId, 3600, json_encode($data));
-    // $this->cache->set($uploadId, json_encode($data), 3600);
-
-    // cleanup
-    // dispatch(new UploadCleanupJob())->onQueue('cleanup')->delay(now()->addSeconds(30));
+    $job = ZipProcessJob::withId(json_encode($data), Auth::user()->id);
+    dispatch($job)->onQueue('uploads');
+    $jobId = $job->id;
+    // untuk debug
+    // try {
+    //   ZipProcessJob::dispatchSync(json_encode($data), Auth::user()->id);
+    //   // set job id to metadata
+    //   $data = $this->cache->getArray($uploadId);
+    //   $data["job_id"] = 0;
+    //   // save metadata to cache
+    //   $this->cache->set($uploadId, $data);
+    // } catch (\Throwable $th) {
+    //   dd($th);
+    //   return;
+    // }
 
     return response()->json([
       'upload_id' => $uploadId,
-      'job_id' => $data['job_id'],
+      'job_id' => $jobId ?? $data['job_id'],
+      // 'job_uuid' => $jobUuId ?? '', // jika perlu uuid
       'status' => 'processing',
     ]);
   }
@@ -170,24 +169,29 @@ class UploadNativeController extends UploadController
   }
   public function tesJob()
   {
-    // $job = new ProcessZipJob('', Auth::user()->id, 1);
+    // $job = new ZipProcessJob('', Auth::user()->id, 1);
     // dispatch($job->onQueue('uploads'));
-    // $job = ProcessZipJob::dispatch('fufufafa')->onQueue('uploads');
-    // // $job = ProcessZipJob::dispatch('fufufafa');
-    // $job = new ProcessZipJob('asa', Auth::user()->id, 1);
+    // $job = ZipProcessJob::dispatch('fufufafa')->onQueue('uploads');
+    // // $job = ZipProcessJob::dispatch('fufufafa');
+    // $job = new ZipProcessJob('asa', Auth::user()->id, 1);
     // Event::listen(JobQueued::class, function (JobQueued $event) use (&$jobId) {
     //   $jobId = $event->id;
     // });
     // dispatch($job)->onQueue('uploads');
-    // $job = ProcessZipJob::dispatchWithId('', Auth::user()->id, 1)->onQueue('uploads');
+    // $job = ZipProcessJob::dispatchWithId('', Auth::user()->id, 1)->onQueue('uploads');
 
-    // $job = ProcessZipJob::withId('', Auth::user()->id, 1);
+    // $job = ZipProcessJob::withId('', Auth::user()->id, 1);
     // $pending = dispatch($job)->onQueue('uploads');
     // dd($job);
-    $job = ProcessZipJob::withId('', Auth::id(), 1);
+    $job = ZipProcessJob::withId('', Auth::id(), 1);
     dispatch($job);
     dd($job->id); // selalu berisi, baik chaining ataupun tidak
     // dd($job, $job->getJob()->id);
+  }
+
+  private function check_progress(array $metadata) :bool
+  {
+    return ($metadata['total_chunks'] ? ($metadata['uploaded_chunks'] ?? 0) / $metadata['total_chunks'] : 0) >= 1.0;
   }
 
   /**
@@ -208,9 +212,13 @@ class UploadNativeController extends UploadController
       return response()->json(['error' => 'Upload not found'], 404);
     }
 
+    if(!$this->check_progress($data)){
+      return response()->json(['error' => 'Chunk is not completely uploaded'], 422); // uncompressable content
+    }
+
     // 🔑 Auto-cleanup dari cache jika sudah selesai
-    $cleaned = true; // untuk debut, sehingga tidak dihapus (overwrite)
-    // $cleaned = $this->cache->cleanupIfCompleted($id, $data);
+    // $cleaned = true; // untuk debut, sehingga tidak dihapus (overwrite)
+    $cleaned = $this->cache->cleanupIfCompleted($id, $data);
 
     if ($cleaned) {
       return response()->json([
@@ -226,8 +234,8 @@ class UploadNativeController extends UploadController
     // Return status normal
     return response()->json([
       'id' => $id,
-      // 'status' => $data['status'] ?? 'uploaded',
-      'status' => 'processing', // untuk debug saja
+      'status' => $data['status'] ?? 'uploaded',
+      // 'status' => 'processing', // untuk debug saja
       'file_name' => $data['file_name'] ?? null,
       'file_size' => $data['file_size'] ?? 0,
       'total_chunks' => $data['total_chunks'] ?? 0,
@@ -259,13 +267,17 @@ class UploadNativeController extends UploadController
   {
     $metadata = $this->cache->getArray($uploadId) ?? [];
 
+    $uploadedChunk = 0;
+
     // set chunk
     $metadata['chunks_id'] = isset($metadata['chunks_id']) ? $metadata['chunks_id'] : [];
-    if(!in_array($chunkId, $metadata['chunks_id'])) $metadata['chunks_id'][] = $chunkId;
-
+    if(!in_array($chunkId, $metadata['chunks_id'])) {
+      $metadata['chunks_id'][] = $chunkId;
+      $uploadedChunk = 1;
+    }
 
     $updated = array_merge($metadata, $data, [
-      'uploaded_chunks' => ($metadata['uploaded_chunks'] ?? 0) + 1,
+      'uploaded_chunks' => ($metadata['uploaded_chunks'] ?? 0) + $uploadedChunk,
       'updated_at' => now()->timestamp,
     ]);
 

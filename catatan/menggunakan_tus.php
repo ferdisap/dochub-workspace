@@ -26,7 +26,7 @@ sequenceDiagram
     Server-->>User: 200 OK + Upload-Length: 100%
     
     User->>Server: POST /process (mulai proses)
-    Server->>Job: Queue ProcessZipJob
+    Server->>Job: Queue ZipProcessJob
     Server-->>User: 202 Accepted (cepat!)
 
 <!-- Penggabungan chunk dilakukan saat upload, BUKAN di akhir
@@ -35,7 +35,7 @@ Tidak ada "tahap gabung" yang berat di akhir -->
 
 <!-- // Di handler Tus onAfterUploadComplete
 rename($tempFile, $finalPath); // atomic, 0.001 detik
-ProcessZipJob::dispatch($finalPath); // async
+ZipProcessJob::dispatch($finalPath); // async
 return response('', 204); -->
 
 <!-- Benchmarks Nyata: Tus vs Native (File 1 GB)

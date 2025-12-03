@@ -49,7 +49,8 @@ class Manifest extends Model
     'total_files',
     'total_size_bytes',
     'hash_tree_sha256',
-    'storage_path' // 🔑 pointer ke file disk
+    'storage_path', // 🔑 pointer ke file disk
+    'tags'
   ];
 
   protected $casts = [
@@ -131,7 +132,7 @@ class Manifest extends Model
   }
 
   // Akses konten lengkap
-  public function getContentAttribute(): array
+  public function getContentAttribute(): WorkspaceManifest
   {
     return WorkspaceManifest::content($this->storage_path);
   }

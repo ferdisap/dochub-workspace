@@ -127,22 +127,16 @@ class NativeCache implements Cacheable, CacheCleanup
   ): bool {
     if(count($metadata) < 1) return true; // artinya sudah dibersihkan
     // Cek status selesai
-    $isCompleted = (
-      ($metadata['status'] ?? '') === 'completed' ||
-      ($metadata['job_id'] ?? null) !== null // Sudah diproses
-    );
+    $isCompleted = ($metadata['status'] ?? '') === 'completed';
 
-    // Cek progress 100%
-    $progress = $metadata['total_chunks'] ?
-      ($metadata['uploaded_chunks'] ?? 0) / $metadata['total_chunks'] : 0;
-      
-    $isFullyUploaded = $progress >= 1.0;
+    // Cek progress 100% // sudah dilakukan di controller
+    // $progress = $metadata['total_chunks'] ? ($metadata['uploaded_chunks'] ?? 0) / $metadata['total_chunks'] : 0;
+    // $isFullyUploaded = $progress >= 1.0;
 
-
-    // Cleanup jika: selesai diproses ATAU upload 100% tapi belum diproses > 5 menit
-    $shouldCleanup = $isCompleted ||
-      ($isFullyUploaded && ($metadata['updated_at'] ?? 0) < time() - 300);
-
+    // Cleanup jika: selesai diproses ATAU upload 100% tapi belum diproses > 5 menit (5 x 60 detik = 300). 86400 = 24*60*60 = sehari
+    // $shouldCleanup = $isCompleted || ($isFullyUploaded && ($metadata['updated_at'] ?? 0) < time() - 300);
+    $shouldCleanup = $isCompleted || (($metadata['updated_at'] ?? 0) < time() - 300);
+    
     if ($shouldCleanup) {
       return $this->cleanupUpload($uploadId, $metadata);
     }
@@ -164,7 +158,7 @@ class NativeCache implements Cacheable, CacheCleanup
 
       // Hapus file fisik jika ada (sama seperti RedisCleanupService)
       if (isset($metadata['upload_id'])) {
-        $driverUpload = config('upload.driver') === 'tus' ? 'tus' : 'file'; // walau auto adalah file
+        $driverUpload = config('upload.driver') === 'tus' ? 'tus' : 'native'; // walau auto adalah file
         $uploadDir = config("upload.driver.{$driverUpload}.root") . "/{$uploadId}";
         if (is_dir($uploadDir)) {
           $this->deleteDirectory($uploadDir);

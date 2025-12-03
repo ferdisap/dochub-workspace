@@ -38,7 +38,7 @@ Tus Protocol | 2.5 detik | 25 detik | 125 detik | ~4 MB -->
         $this->validateFileIntegrity($tempPath);
 
         // 4. Queue untuk pemrosesan
-        ProcessZipJob::dispatch($tempPath, auth()->id());
+        ZipProcessJob::dispatch($tempPath, auth()->id());
 
         return response()->json(['status' => 'uploaded', 'temp_id' => basename($tempPath)]);
 
@@ -49,7 +49,7 @@ Tus Protocol | 2.5 detik | 25 detik | 125 detik | ~4 MB -->
 } -->
 
 <!-- Pemrosesan Async (Wajib untuk File Besar) -->
-<!-- class ProcessZipJob implements ShouldQueue
+<!-- class ZipProcessJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 

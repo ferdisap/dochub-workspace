@@ -29,7 +29,7 @@
     "ankitpokhrel/tus-php": "^2.4",
     "laravel-zero/foundation": "^12.40",
     "illuminate/queue": "^12.40",
-    "predis/predis": "^2.4",
-    "illuminate/filesystem": "^12.40"
+    "illuminate/filesystem": "^12.40",
+    "james-heinrich/getid3": "^1.9"
   }
 }

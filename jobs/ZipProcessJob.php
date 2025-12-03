@@ -7,6 +7,7 @@ use Dochub\Upload\Cache\NativeCache;
 use Dochub\Upload\Services\CacheCleanup;
 use Dochub\Workspace\Blob;
 use Dochub\Workspace\Enums\ManifestSourceType;
+use Dochub\Workspace\Manifest as WorkspaceManifest;
 use Dochub\Workspace\Models\Manifest;
 use Dochub\Workspace\Services\BlobLocalStorage as BlobStorage;
 use Dochub\Workspace\Services\ManifestSourceParser;
@@ -28,99 +29,9 @@ use TusPhp\Cache\Cacheable;
 // uploading, processing, uploaded => di controller
 // processing, completed, failed => di process zip job
 
-class ProcessZipJob implements ShouldQueue
+class ZipProcessJob extends FileUploadProcessJob implements ShouldQueue
 {
   use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-  protected $cache_driver = 'file'; // redis or etc
-
-  public int $id = 0;
-
-  public string $uploadId;
-  public string $filePath;
-
-  protected NativeCache $cache;
-
-  public string $metadata; // string json
-  public int $userId;
-  /**
-   * Create a new job instance.
-   */
-  public function __construct(string $metadata, int $userId)
-  {
-    $this->metadata = $metadata;
-    $this->userId = $userId;
-  }
-
-  /**
-   * cara panggil
-   * $job = ProcessZipJob::withId('', Auth::id(), 1);
-   * dispatch($job)->onQueue('uploads');
-   * dd($job->id);
-   */
-  public static function withId(string $metadata, int $userId): self
-  {
-    $job = new self($metadata, $userId);
-    Event::listen(JobQueued::class, function (JobQueued $event) use (&$job, $metadata) {
-      // set job id for job class
-      $job->id = $event->id;
-      // set job id to metadata
-      $data = json_decode($metadata, true);
-      $data["job_id"] = $job->id;
-      // save metadata to cache
-      $this->uploadId = $data['upload_id'];
-      $this->cache = new NativeCache();
-      $this->cache->set($this->uploadId, $data);
-    });
-    return $job;
-  }
-
-  public function mergeZipChunk($totalChunk, $uploadDir, $fileName)
-  {
-    $chunks = [];
-    for ($i = 0; $i < $totalChunk; $i++) {
-      $chunks[] = "{$uploadDir}/{$fileName}.part{$i}";
-    }
-
-    // Gabung file
-    $final = fopen($this->filePath, 'wb');
-    foreach ($chunks as $chunk) {
-      if (file_exists($chunk)) {
-        $content = file_get_contents($chunk);
-        fwrite($final, $content);
-        unlink($chunk); // Hapus chunk
-      }
-    }
-    fclose($final);
-
-
-    // Validasi ZIP
-    // if (!$this->isValidZip($this->filePath)) {
-    //   unlink($this->filePath);
-    //   rmdir($uploadDir);
-    //   throw new \RuntimeException("Invalid ZIP file", 1);
-    // }
-  }
-
-  /**
-   * Update status ke Redis untuk frontend
-   */
-  private function updateStatus(string $status, int $progress, array $data = []): void
-  {
-    if (!$this->uploadId) return;
-
-    $metadata = $this->cache->getArray($this->uploadId);
-
-    $update = array_merge($metadata, [
-      'status' => $status,
-      'progress' => $progress,
-      'updated_at' => now()->timestamp,
-    ], $data);
-
-    // TTL dinamis
-    // $ttl = $status === 'completed' ? 300 : 3600;
-    $this->cache->set($this->uploadId, json_encode($update));
-  }
 
   /**
    * Validasi file ZIP
@@ -178,86 +89,38 @@ class ProcessZipJob implements ShouldQueue
   }
 
   /**
-   * Scan direktori
-   */
-  private function scanDirectory(string $dir): array
-  {
-    $files = [];
-    $iterator = new \RecursiveIteratorIterator(
-      new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS)
-    );
-
-    foreach ($iterator as $file) {
-      if ($file->isFile()) {
-        $relativePath = str_replace($dir . DIRECTORY_SEPARATOR, '', $file->getPathname());
-        $files[$relativePath] = $file->getPathname();
-      }
-    }
-    return $files;
-  }
-
-  /**
    * Proses file ke blob storage
    */
-  private function processFilesToBlobs(array $files, array &$result, bool $unlinkIfSuccess = true): void
+  private function processFilesToBlobs(array $files, array &$result, bool $unlinkIfSuccess = true): WorkspaceManifest
   {
     $blob = new Blob();
     $totalprocessed = 0;
     $source = ManifestSourceParser::makeSource(ManifestSourceType::UPLOAD->value, "user-{$this->userId}");
-    $wsManifest = $blob->store($this->userId, $source, $files, function (string $hash, string $relativePath, string $absolutePath, ?\Exception $e, int $processed, int $total) use (&$totalprocessed, $unlinkIfSuccess) {
-      if ($hash || ($e === null)) {
-        if ($unlinkIfSuccess) unlink($absolutePath);
-        if ($processed % 10 === 0 || $processed === $total) {
-          $progress = round(($processed / $total) * 100);
-          $this->updateStatus('processing', $progress, [
-            'files_processed' => $processed,
-            'total_files' => $total,
+    return $blob->store($this->userId, $source, $files, 
+      function (string $hash, string $relativePath, string $absolutePath, ?\Exception $e, int $processed, int $total) use (&$totalprocessed, $unlinkIfSuccess) {
+        if ($hash || ($e === null)) {
+          if ($unlinkIfSuccess) @unlink($absolutePath);
+          if ($processed % 10 === 0 || $processed === $total) {
+            $progress = round(($processed / $total) * 100);
+            $this->updateStatus('processing', $progress, [
+              'files_processed' => $processed,
+              'total_files' => $total,
+            ]);
+          }
+        } else {
+          $result['errors'][] = "Failed to process {$relativePath}: " . $e->getMessage();
+          Log::warning("File processing failed", [
+            'file' => $relativePath,
+            'error' => $e->getMessage(),
           ]);
+          throw new \RuntimeException("File processing failed: {$relativePath}");
         }
-      } else {
-        $result['errors'][] = "Failed to process {$relativePath}: " . $e->getMessage();
-        Log::warning("File processing failed", [
-          'file' => $relativePath,
-          'error' => $e->getMessage(),
-        ]);
+        $totalprocessed = $processed;
       }
-      $totalprocessed = $processed;
-    });
-    $result['files_processed'] = $totalprocessed;
-
-    // create manifest model
-    Manifest::create([
-      'from_id' => $this->userId,
-      'source' => $wsManifest->source,
-      'version' => $wsManifest->version,
-      'total_files' => $wsManifest->total_files,
-      'total_size_bytes' => $wsManifest->total_size_bytes,
-      'hash_tree_sha256' => $wsManifest->hash_tree_sha256,
-      'storage_path' => $wsManifest->storage_path()
-    ]);
-    return;
-  }
-
-  /**
-   * Hapus direktori rekursif
-   * eg: $this->deleteDirectory($extractDir);
-   */
-  private function deleteDirectory(string $dir): void
-  {
-    if (!is_dir($dir)) return;
-
-    $files = new \RecursiveIteratorIterator(
-      new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
-      \RecursiveIteratorIterator::CHILD_FIRST
     );
-
-    foreach ($files as $file) {
-      $file->isDir() ? rmdir($file->getRealPath()) : unlink($file->getRealPath());
-    }
-    rmdir($dir);
+    $result['files_processed'] = $totalprocessed;
   }
-
-
+  
   /**
    * Execute the job.
    */
@@ -276,9 +139,6 @@ class ProcessZipJob implements ShouldQueue
     $this->uploadId = $metadata['upload_id'];
     $startTime = microtime(true);
 
-    // #1. merge chunked zip
-    $this->mergeZipChunk($totalChunk, $uploadDir, $fileName);
-
     $result = [
       'upload_id' => $this->uploadId,
       'file_path' => $this->filePath,
@@ -293,6 +153,9 @@ class ProcessZipJob implements ShouldQueue
       // Update status ke Redis
       $this->updateStatus('processing', 0);
 
+      // #1. merge chunked zip
+      $this->mergeChunks($totalChunk, $uploadDir, $fileName);
+
       // #2. Ekstrak zip ke temporary directory
       $extractDir = $this->extractZip($this->filePath);
 
@@ -301,8 +164,23 @@ class ProcessZipJob implements ShouldQueue
       $result['total_files'] = count($files);
 
       // #2. change into blob
-      $this->processFilesToBlobs($files, $result);
-      // $this->deleteDirectory($extractDir); // karena sudah di unlink, tidak perlu di delete directory
+      $wsManifest = $this->processFilesToBlobs($files, $result);
+      $wsManifest->tags = $metadata['tags'] ?? null;
+      
+      // #3. create manifest model
+      Manifest::create([
+        'from_id' => $this->userId,
+        'source' => $wsManifest->source,
+        'version' => $wsManifest->version,
+        'total_files' => $wsManifest->total_files,
+        'total_size_bytes' => $wsManifest->total_size_bytes,
+        'hash_tree_sha256' => $wsManifest->hash_tree_sha256,
+        'storage_path' => $wsManifest->storage_path(),
+        'tags' => $wsManifest->tags
+      ]);
+
+      // delete directory upload karena sudah menjadi blob
+      $this->deleteDirectory($extractDir); // walau sudah di unlink, tetap di delete karena unlink itu hanya filenya, tidak sama foldernya. 
 
       // Update status sukses
       $result['status'] = 'completed';
@@ -321,7 +199,7 @@ class ProcessZipJob implements ShouldQueue
       //   ]);
       // }
 
-      // Log::info("ProcessZipJob completed", $result);
+      // Log::info("ZipProcessJob completed", $result);
 
 
       return $result;
@@ -343,7 +221,7 @@ class ProcessZipJob implements ShouldQueue
       //   ]);
       // }
 
-      Log::error("ProcessZipJob failed", [
+      Log::error("ZipProcessJob failed", [
         'upload_id' => $this->uploadId,
         'error' => $e->getMessage(),
         'trace' => $e->getTraceAsString(),

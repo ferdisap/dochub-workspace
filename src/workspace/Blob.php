@@ -33,7 +33,6 @@ class Blob
     return self::path("{$subDir}/{$hash}");
   }
 
-  // public function store(array $files, callable $callback) :Manifest
   public function store(string $userId, string $source, array $files, callable $callback) :Manifest
   {
     $processed = 0;
@@ -42,10 +41,9 @@ class Blob
     $total_size_bytes = 0; // sebelum di hash
     // $hash_tree_sha256 = null;
     // $storage_path = null;
-
     $wsFiles = [];
     foreach ($files as $relativePath => $filePath) {
-      // dd($relativePath, $filePath);
+      // dd($relativePath, $filePath, file_exists($filePath));
       try {
         if (Workspace::isDangerousFile($relativePath)) {
           $result['errors'][] = "Skipped dangerous file: {$relativePath}";
@@ -61,7 +59,8 @@ class Blob
         
         $callback($hash, $relativePath, $filePath, null, $processed, $total_files);
       } catch (\Exception $e) {
-        $callback('', $relativePath, $filePath, $e, $processed, $total_files);
+        throw $e;
+        // $callback('', $relativePath, $filePath, $e, $processed, $total_files);
       }
     } 
 

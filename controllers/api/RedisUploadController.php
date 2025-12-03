@@ -2,7 +2,7 @@
 
 namespace Dochub\Controller;
 
-use Dochub\Job\ProcessZipJob;
+use Dochub\Job\ZipProcessJob;
 use Dochub\Upload\Tus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
@@ -118,7 +118,7 @@ class RedisUploadController
     }
 
     // Dispatch job
-    ProcessZipJob::dispatch($tempPath, Auth::user()->id)
+    ZipProcessJob::dispatch($tempPath, Auth::user()->id)
       ->onQueue('uploads');
 
     // Hapus dari Redis
@@ -146,7 +146,7 @@ class RedisUploadController
     );
 
     // Trigger processing via queue
-    ProcessZipJob::dispatch($filePath, Auth::user()->id, $uploadKey)
+    ZipProcessJob::dispatch($filePath, Auth::user()->id, $uploadKey)
       ->onQueue('uploads');
   }
 

@@ -5,21 +5,11 @@ use Dochub\Controller\UploadNativeController;
 use Illuminate\Support\Facades\Route;
 
 
-Route::prefix('dochub')->middleware('web')->group(function () {
-  // Single endpoint for all drivers
-  // Route::post('/upload', [UploadController::class, 'upload']);
-  // Route::get('/upload/config', [UploadController::class, 'getConfig']);
-
-  // Tus-specific routes (for compatibility)
-  // Route::get('/upload/{id}', [UploadController::class, 'upload']); // harusnya head method
-  // Route::patch('/upload/{id}', [UploadController::class, 'upload']);
-
-
-  // 🔑 Native routes baru
-  // Route::post('/upload/{id}', [UploadController::class, 'upload']);
-  // Route::get('/upload/{id}/status', [UploadController::class, 'getUploadStatus']); // GET /upload/abc123/status
-  // Route::delete('/upload/{id}', [UploadController::class, 'deleteUpload']);        // DELETE /upload/abc123
-  // Chunked native upload
+Route::prefix('dochub')->middleware([
+  'web', 
+  'throttle:100,1' // 100 chunk/menit
+  ])->group(function () {
+  
   // tambahkan ->middleware('throttle:100,1'); // 100 chunk/menit
   Route::get('/upload/config', [UploadController::class, 'getConfig'])->middleware('auth')->name('dochub.upload.config');
   Route::post('/upload/check', [UploadNativeController::class, 'checkUpload'])->middleware('auth')->name('dochub.upload.check');
@@ -30,6 +20,9 @@ Route::prefix('dochub')->middleware('web')->group(function () {
   Route::delete('/upload/{id}/delete', [UploadNativeController::class, 'deleteUpload'])->middleware('auth')->name('dochub.upload.delete');
 
   Route::get('/manifest', [UploadController::class, 'getManifest'])->middleware('auth')->name('dochub.manifest');
+  
+  Route::get('/file/{blob:hash}', [UploadController::class, 'getFile'])->middleware('auth')->name('dochub.file');
+  // Route::get('/file/{hash}', [UploadController::class, 'getFile'])->middleware('auth')->name('dochub.file');
 
   Route::get('/tes/chunk/{uploadId}/{chunkId}', [UploadNativeController::class, 'tesCheckChunk']);
 
@@ -134,7 +127,7 @@ Route::prefix('dochub')->middleware('web')->group(function () {
 //     $this->validateZipSafety($zipPath);
 
 //     // Proses async
-//     ProcessZipJob::dispatch($zipPath, $request->user()->id);
+//     ZipProcessJob::dispatch($zipPath, $request->user()->id);
     
 //     return response()->json(['status' => 'processing']);
 // }

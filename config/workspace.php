@@ -7,11 +7,17 @@ return [
     |--------------------------------------------------------------------------
     | Default Workspace Filesystem Disk
     |--------------------------------------------------------------------------
-    |
     | meng override filesystems.php
-    |
     */
     'default' => env('DOCHUB_WORCKSPACE_DISK', 'local'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Read File To Memory
+    |--------------------------------------------------------------------------
+    | misalnya pakai file_get_contents itu tidak boleh jika lebih dari limit ini
+    */
+    'read_file_limit' =>  (2 * 1024 * 1024), // 2MB in bytes
 
     
     /*

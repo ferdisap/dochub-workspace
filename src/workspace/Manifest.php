@@ -16,6 +16,8 @@ class Manifest
 
   protected string $storagePath = ''; // jika tidak ada maka berarti belum dibuat
 
+  public string | null $tags = null;
+
   /**
    * @param string
    * @param string
@@ -120,9 +122,14 @@ class Manifest
       'total_files' => $this->total_files,
       'total_size_bytes' => $this->total_size_bytes,
       'hash_tree_sha256' => $this->hash_tree_sha256,
+      'tags' => $this->tags,
       'files' => array_map(function($file) {
         return $file->toArray();
       },$this->files),
     ];
+  }
+
+  public function __toArray(){
+    return $this->toArray();
   }
 }

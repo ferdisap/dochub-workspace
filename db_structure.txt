@@ -240,6 +240,8 @@ Schema::create('dochub_manifests', function (Blueprint $table) {
       // 🔑 Pointer ke file fisik
       $table->string('storage_path');         // 'manifests/2025/11/abc123.json', relative to app/private/dochub/workspace
 
+      $table->string('tags')->nullable(); // untuk menyimpan catatan atau tag mengenai manifest
+
       // Index untuk query cepat
       $table->index('source');
       $table->index('version');

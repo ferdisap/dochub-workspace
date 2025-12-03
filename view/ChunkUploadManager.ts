@@ -1,3 +1,5 @@
+const isDev = false; // tidak check chunk jika isDev = true
+
 interface UploadConfig {
   driver: string;
   environment: string;
@@ -383,9 +385,6 @@ export class ChunkedUploadManager {
         this.onEnd({ ...startData, jobId, status, url });
       }
     } catch (e) {
-      jobId = "";
-      url = "";
-      status = "failed";
 
       if (this.onError) {
         this.onError({
@@ -393,7 +392,7 @@ export class ChunkedUploadManager {
           totalBytes: file.size,
           uploadId: this.uploadId,
           uploadedSize: uploadedSize,
-          status: status,
+          status: "failed",
           error: e as Error,
         });
       }
@@ -479,16 +478,18 @@ export class ChunkedUploadManager {
     let response: Response;
     try {
       // 🔑 Check the chunk
-      // try {
-      //   let responseCheckChunk: number = await this.checkChunk(chunkId);
-      //   // console.log(responseCheckChunk);
-      //   if (responseCheckChunk === 304) {
-      //     return { id: chunkId, size: chunkSize, status: "uploaded" };
-      //   }
-      // } catch (error) {
-      //   // console.error(error);
-      //   throw error;
-      // }
+      if(!isDev){
+        try {
+          let responseCheckChunk: number = await this.checkChunk(chunkId);
+          // console.log(responseCheckChunk);
+          if (responseCheckChunk === 304) {
+            return { id: chunkId, size: chunkSize, status: "uploaded" };
+          }
+        } catch (error) {
+          // console.error(error);
+          throw error;
+        }
+      }
 
       // 🔑 Pakai fetch dengan Blob + custom headers
       response = await fetch(`${this.endpoint}/chunk`, {
@@ -508,6 +509,14 @@ export class ChunkedUploadManager {
         body: chunk, // 🔑 Langsung kirim Blob
         signal: this.abortController ? this.abortController.signal : null,
       });
+
+      // jika response status 429 (too many attempt karena middleware throtle),
+      // 1. ambil response header X-Ratelimit-Reset (limitResetTime)
+      // 2. to = Math.abs((limitResetTime * 1000) - Date.now());
+      // 3. setTimeout dengan to
+      // atau
+      // 1. ambil response header Retry-After (in seconds)
+      // 2. setTimeout (retryAfter * 1000) karena perlu milisecond
     } catch (error) {
       if ((error as Error).name === "AbortError") {
         throw new Error("Upload Error");
@@ -550,6 +559,7 @@ export class ChunkedUploadManager {
     const response = await fetch(`${this.endpoint}/process`, {
       method: "POST",
       headers: {
+        "X-Requested-With": "XMLHttpRequest",
         "Content-Type": "application/json",
         "X-CSRF-TOKEN": getCSRFToken(),
       },
@@ -670,7 +680,7 @@ export function formatDuration(ms:number) {
   const totalSeconds = ms / 1000;
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
+  const seconds = Number((totalSeconds % 60).toFixed(2));
 
   const parts = [];
 

@@ -29,6 +29,7 @@ return new class extends Migration
       $table->unsignedBigInteger('total_size_bytes'); // file asli, sebelum di hash
       $table->string('hash_tree_sha256', 64); // untuk validasi
       $table->string('storage_path'); // path relatif
+      $table->string('tags')->nullable(); // untuk menyimpan catatan atau tag mengenai manifest
       $table->timestamps();
     });
 

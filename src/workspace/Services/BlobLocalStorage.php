@@ -4,6 +4,8 @@ namespace Dochub\Workspace\Services;
 
 use Dochub\Workspace\Blob;
 use Dochub\Workspace\Models\Blob as BlobModel;
+use Dochub\Workspace\Services\Compression\Contract;
+use Dochub\Workspace\Services\Compression\Gzip;
 use RuntimeException;
 use Dochub\Workspace\Services\LockManager as ServicesLockManager;
 use Dochub\Workspace\Workspace;
@@ -61,6 +63,8 @@ class BlobLocalStorage
 {
   protected $compressionType = 'gzip';
 
+  protected Contract $compresser;
+
   /**
    * Chunk size untuk streaming (adjustable berdasarkan environment)
    * - Low RAM/I/O: 8192 (8 KB)
@@ -77,18 +81,114 @@ class BlobLocalStorage
 
   protected ServicesLockManager $lockManager;
 
+  protected array $mimeTextList = [
+    "application/javascript",
+    "application/json",
+    "application/xml",
+    "application/xhtml+xml",
+    "application/manifest+json",
+    "application/ld+json",
+    "application/soap+xml",
+    "application/vnd.api+json",
+    "application/atom+xml",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.oasis.opendocument.text",
+    "application/rss+xml",
+    "application/pkcs7-mime",
+    "application/pgp-signature",
+    "application/yaml",
+    "application/toml",
+    "application/x-www-form-urlencoded",
+    "application/pgp-signature",
+    "application/pkcs7-mime",
+    "multipart/form-data",
+    "image/svg+xml",
+    "image/vnd.dxf",
+    "model/step",
+    "model/step+xml",
+    "model/step+zip",
+    "model/step-xml+zi",
+    "model/iges",
+    "model/obj",
+    "model/stl",
+    "model/gltf+json",
+    "model/vnd.collada+xml",
+  ];
+
   public function __construct(ServicesLockManager $lockManager = new FlockLockManager())
   {
     // Sesuaikan berdasarkan environment
     $this->chunkSize = Config::get('blob.chunk_size', 32768); // default: 32 KB
-
     $this->lockManager = $lockManager;
+    $this->compresser = new Gzip();
+  }
+
+  /**
+   * set default compressor
+   */
+  public function setCompressor(Contract $compressor)
+  {
+    $this->compressionType = $compressor->type();
+    $this->compresser = $compressor;
+  }
+
+  /**
+   * Read all file'contens to memory an once
+   * @param string $hash blob hash
+   * @throws \RuntimeException
+   */
+  public function read(string $hash)
+  {
+    $fullPath = $this->getBlobPath($hash);
+    if (!file_exists($fullPath)) {
+      throw new \RuntimeException("Manifest not found");
+    }
+    $maximumSize = config('workspace.read_file_limit', (2 * 1024 * 1024));
+    if(filesize($fullPath) > $maximumSize){
+      throw new \RuntimeException("Maximum read file is {$maximumSize} bytes");
+    }
+    return file_get_contents($fullPath);
+  }
+
+  /**
+   * Read file contents by streaming resource
+   * @param string $hash blob hash
+   * @param callable $callback
+   * @throws \RuntimeException
+   * 
+   * contoh cara pakai
+   * return response()->stream(
+   *   function () use ($hash, $blobLocalStorage) {
+   *     $blobLocalStorage->readStream(
+   *       $hash,
+   *       function ($stream) {
+   *         while (!feof($stream)) {
+   *           echo fread($stream, 8192);
+   *           flush();
+   *         }
+   *       }
+   *     );
+   *   }
+   * );
+   */
+  public function readStream(string $hash, callable $callback) :void
+  {
+    $fullPath = $this->getBlobPath($hash);
+    if (!file_exists($fullPath)) {
+      throw new \RuntimeException("Manifest not found");
+    }
+    $this->compresser->decompressStream($fullPath, $callback);
   }
 
   /**
    * Simpan file ke blob storage
    *
-   * @param string $filePath Path file sumber (di filesystem)
+   * @param string $filePath Absolute path file sumber (di filesystem)
    * @param string|null $providedHash Hash dari third-party (opsional)
    * @param array $metadata Metadata tambahan: ['mime', 'is_binary', ...]
    * @return string SHA-256 hash dari isi file (unik, lowercase)
@@ -100,28 +200,30 @@ class BlobLocalStorage
     if (!is_file($filePath)) {
       throw new RuntimeException("File not found: {$filePath}");
     }
-    
+
     $size = filesize($filePath);
     if ($size === false) {
       throw new RuntimeException("Cannot get size of: {$filePath}");
     }
-    
+
     $metadata["original_size_bytes"] = $size;
-    
+
     // #1. Dapatkan hash (dari third-party atau hitung sendiri)
     $hash = $this->resolveHash($filePath, $providedHash, $size);
-    
+
+    // #2. Cek deduplikasi dan file blob sudah ada dan sudah di @chmod 0444 atau belum, true  = sudah ada
+    $blobPath = $this->getBlobPath($hash);
+    if(file_exists($blobPath) && !is_writable($blobPath)) return $hash;
     // #2. Cek deduplikasi: jika blob sudah ada, langsung return
     if ($this->blobExists($hash)) {
       return $hash;
     }
 
     // #3. Simpan file ke blob storage (atomic, dengan lock)
-    // $this->storeFileAtomic($filePath, $hash, $metadata);
     $this->storeFileAtomicCompress($filePath, $hash, $metadata);
-
+    
     // #4. Simpan metadata ke database
-    $this->storeMetadata($hash, $size,  $metadata);
+    $this->storeMetadataToDb($hash, $size,  $metadata);
 
     return $hash;
   }
@@ -232,73 +334,75 @@ class BlobLocalStorage
    * lock file untuk menghindari race condition di shared storage
    */
 
-  private function storeFileAtomic(string $sourcePath, string $hash, array &$metadata): void
-  {
-    $subDir = substr($hash, 0, 2);
-    $blobDir = Workspace::blobPath() . "/{$subDir}";
-    $blobPath = "{$blobDir}/{$hash}";
+  // private function storeFileAtomic(string $sourcePath, string $hash, array &$metadata): void
+  // {
+  //   $subDir = substr($hash, 0, 2);
+  //   $blobDir = Workspace::blobPath() . "/{$subDir}";
+  //   $blobPath = "{$blobDir}/{$hash}";
 
-    if (!is_dir($blobDir)) {
-      mkdir($blobDir, 0755, true);
-    }
+  //   if (!is_dir($blobDir)) {
+  //     mkdir($blobDir, 0755, true);
+  //   }
 
-    $tempPath = $blobPath . '.tmp.' . \Illuminate\Support\Str::random(8);
+  //   $tempPath = $blobPath . '.tmp.' . \Illuminate\Support\Str::random(8);
 
-    // 🔑 Gunakan lock manager (otomatis pilih flock/redis)
-    $lockKey = "blob_dir:{$subDir}";
+  //   // 🔑 Gunakan lock manager (otomatis pilih flock/redis)
+  //   $lockKey = "blob_dir:{$subDir}";
 
-    $this->lockManager->withLock(
-      $lockKey,
-      function () use ($sourcePath, $tempPath, $blobPath, &$metadata) {
-        // Cek ulang setelah lock
-        if (file_exists($blobPath)) {
-          return;
-        }
+  //   $this->lockManager->withLock(
+  //     $lockKey,
+  //     function () use ($sourcePath, $tempPath, $blobPath, &$metadata) {
+  //       // Cek ulang setelah lock
+  //       if (file_exists($blobPath)) {
+  //         return;
+  //       }
 
-        $size = $metadata["original_size_bytes"];
+  //       $size = $metadata["original_size_bytes"];
 
-        $source = fopen($sourcePath, 'rb');
-        $dest = fopen($tempPath, 'wb');
+  //       $source = fopen($sourcePath, 'rb');
+  //       $dest = fopen($tempPath, 'wb');
 
-        if (!$source || !$dest) {
-          fclose($source);
-          fclose($dest);
-          throw new \RuntimeException("Cannot open streams for blob");
-        }
+  //       if (!$source || !$dest) {
+  //         fclose($source);
+  //         fclose($dest);
+  //         throw new \RuntimeException("Cannot open streams for blob");
+  //       }
 
-        try {
-          $copied = stream_copy_to_stream($source, $dest, $size, 0);
-          $metadata["compression_type"] = null;
-          if ($copied !== $size) {
-            throw new \RuntimeException("Incomplete copy: {$copied}/{$size}");
-          }
+  //       try {
+  //         $copied = stream_copy_to_stream($source, $dest, $size, 0);
+  //         $metadata["compression_type"] = null;
+  //         if ($copied !== $size) {
+  //           throw new \RuntimeException("Incomplete copy: {$copied}/{$size}");
+  //         }
 
-          fclose($source);
-          fclose($dest);
+  //         fclose($source);
+  //         fclose($dest);
 
-          if (!rename($tempPath, $blobPath)) {
-            throw new \RuntimeException("Atomic rename failed");
-          }
+  //         if (!rename($tempPath, $blobPath)) {
+  //           throw new \RuntimeException("Atomic rename failed");
+  //         }
 
-          @chmod($blobPath, 0444);
-        } catch (\Throwable $e) {
-          fclose($source);
-          fclose($dest);
-          @unlink($tempPath);
-          throw $e;
-        }
-      },
-      Config::get('lock.default_timeout_ms', 30000)
-    );
-  }
+  //         @chmod($blobPath, 0444); // agar file tidak bisa di replace atau rewrite (izin baca saja)
+  //       } catch (\Throwable $e) {
+  //         fclose($source);
+  //         fclose($dest);
+  //         @unlink($tempPath);
+  //         throw $e;
+  //       }
+  //     },
+  //     Config::get('lock.default_timeout_ms', 30000)
+  //   );
+  // }
 
   /**
    * file will be compressed if not binary and not already compressed
    * @param string $sourcePath string file, misal DMC...xml
    * @param string $hash dari $sourcePath
    * @param array $metadata
+   * @return bool true if success, false if nothing to do
+   * @throws RuntimeException if error or cannot store file
    */
-  private function storeFileAtomicCompress(string $sourcePath, string $hash, array &$metadata): void
+  private function storeFileAtomicCompress(string $sourcePath, string $hash, array &$metadata)
   {
     $subDir = substr($hash, 0, 2);
     $blobDir = Workspace::blobPath() . "/{$subDir}";
@@ -309,17 +413,15 @@ class BlobLocalStorage
     }
 
     $tempPath = $blobPath . '.tmp.' . \Illuminate\Support\Str::random(8);
-
     // 🔑 Gunakan lock manager (otomatis pilih flock/redis)
     $lockKey = "blob_dir:{$subDir}";
 
     // 🔑 Deteksi tipe file dari metadata
-    $mime = $metadata['mime'] ?? $this->detectMimeType($hash);
+    $mime = ($metadata['mime'] ?? ($metadata['mime'] = $this->detectMimeType($sourcePath)));
     $metadata['compression_type'] = null;
     $isBinary = ($metadata['is_binary'] ?? ($metadata['is_binary'] = $this->isBinaryFile($sourcePath)));
     $isAlreadyCompressed = $this->isAlreadyCompressedMime($mime);
 
-    
     // 🔑 Putuskan apakah perlu dikompres
     $shouldCompress = !$isBinary && !$isAlreadyCompressed;
     $metadata["stored_size_bytes"] = 0;
@@ -327,108 +429,83 @@ class BlobLocalStorage
     $this->lockManager->withLock(
       $lockKey,
       function () use ($sourcePath, $tempPath, $blobPath, $shouldCompress, &$metadata) {
-        // Log::info("source: {$sourcePath}");
-        // Cek ulang setelah lock
-        if (file_exists($blobPath)) {
-          return;
-        }
-
-        $source = fopen($sourcePath, 'rb');
-        $dest = fopen($tempPath, 'wb');
-
-        if (!$source || !$dest) {
-          fclose($source);
-          fclose($dest);
-          throw new RuntimeException("Cannot open streams");
-        }
-
+        $source = $dest = null;
         try {
-          // dump($shouldCompress, $metadata);
           if ($shouldCompress) {
             // 💨 Kompresi streaming (tanpa load ke memory)
-            $this->streamGzipCompress($source, $dest, $metadata);
-            // dd($shouldCompress, $metadata);
+            $this->compresser->compressStream($sourcePath, $tempPath, $metadata);
+            $metadata["compression_type"] = $this->compressionType;
           } else {
             // 📁 Salin asli
+            $source = fopen($sourcePath, 'rb');
+            $dest = fopen($tempPath, 'wb');
+
+            if (!$source || !$dest) {
+              throw new RuntimeException("Cannot open streams");
+            }
+
             $size = $metadata["original_size_bytes"];
             $copied = stream_copy_to_stream($source, $dest, $size, 0);
             if ($copied !== $size) {
               throw new \RuntimeException("Incomplete copy: {$copied}/{$size}");
             }
+            fclose($source);
+            fclose($dest);
           }
-
-          fclose($source);
-          fclose($dest);
-
-          if (!rename($tempPath, $blobPath)) {
-            throw new RuntimeException("Atomic rename failed");
-          }
-
-          $metadata["stored_size_bytes"] = filesize($blobPath);
-          // dd($shouldCompress, $metadata, pathinfo($blobPath));
-
-          @chmod($blobPath, 0444);
-
-          // Log::info("blob: {$blobPath}");
-
-          // 🔑 Simpan metadata kompresi
-          // $storedSize = filesize($blobPath);
-          // BlobModel::where('hash', $hash)->update([
-          //   'is_stored_compressed' => $shouldCompress,
-          //   'compression_type' => $shouldCompress ? 'gzip' : null,
-          //   'stored_size_bytes' => $storedSize,
-          //   'is_binary' => $isBinary,
-          //   'mime_type' => $mime,
-          //   'is_already_compressed' => $isAlreadyCompressed,
-          // ]);
-        } catch (\Throwable $e) {
-          fclose($source);
-          fclose($dest);
-          @unlink($tempPath);
-          throw $e;
+        } catch (\Throwable $th) {
+          throw $th;
+        } finally {
+          if (is_resource($source)) fclose($source);
+          if (is_resource($dest)) fclose($dest);
         }
+
+        if (!rename($tempPath, $blobPath)) {
+          @unlink($tempPath);
+          throw new RuntimeException("Atomic rename failed");
+        }
+
+        @chmod($blobPath, 0444); // agar file tidak bisa di replace atau rewrite (izin baca saja)
       },
       Config::get('lock.default_timeout_ms', 30000)
     );
+    
+    $metadata["stored_size_bytes"] = filesize($blobPath);
   }
 
   /**
    * Simpan metadata blob ke database
    */
-  // private function storeMetadata(string $hash, int $size, array $metadata): void
-  private function storeMetadata(string $hash, int $size, array $metadata): void
+  private function storeMetadataToDb(string $hash, int $size, array $metadata): void
   {
-    // dd($metadata, (bool) $metadata['compression_type']);
     // Deteksi MIME jika belum ada
-    $mime = $metadata['mime'] ?? $this->detectMimeType($hash);
+    $mime = $metadata['mime'];
     $isBinary = $metadata['is_binary'] ?? !$this->isTextMime($mime);
     $isAlreadyCompressed = $this->isAlreadyCompressedMime($mime);
 
-    try {
-      // Simpan ke DB
-      $data = ([
-        'hash' => $hash,
-        'mime_type' => $mime,
-        'is_binary' => $isBinary,
-        'original_size_bytes' => $size,
-        // 'stored_size_bytes' => $size, // disimpan asli (tanpa kompres untuk binary)
-        // 'is_stored_compressed' => false,
-        // 'compression_type' => null,
-        'is_already_compressed' => $isAlreadyCompressed,
-  
-        'is_stored_compressed' => $metadata['compression_type'] ? true : false,
-        'compression_type' => $metadata['compression_type'] ?? null,
-        'stored_size_bytes' => $metadata['stored_size_bytes'],
-        // 'is_binary' => $isBinary,
-        // 'mime_type' => $mime,
-        // 'is_already_compressed' => $isAlreadyCompressed,
-      ]);
-      BlobModel::create($data);
-    } 
-    catch (\Throwable $th) {
-      // dd($isBinary, $isAlreadyCompressed, $metadata, $th);
-      //throw $th;
-    }
+    // Simpan ke DB
+    $data = ([
+      'hash' => $hash,
+      'mime_type' => $mime,
+      'is_binary' => $isBinary,
+      'original_size_bytes' => $size,
+      // 'stored_size_bytes' => $size, // disimpan asli (tanpa kompres untuk binary)
+      // 'is_stored_compressed' => false,
+      // 'compression_type' => null,
+      'is_already_compressed' => $isAlreadyCompressed,
+
+      'is_stored_compressed' => $metadata['compression_type'] ? true : false,
+      'compression_type' => $metadata['compression_type'] ?? null,
+      'stored_size_bytes' => $metadata['stored_size_bytes'],
+      // 'is_binary' => $isBinary,
+      // 'mime_type' => $mime,
+      // 'is_already_compressed' => $isAlreadyCompressed,
+    ]);
+    BlobModel::create($data);
+    // try {} 
+    // catch (\Throwable $th) {
+    // dd($isBinary, $isAlreadyCompressed, $metadata, $th);
+    // throw $th;
+    // }
   }
 
   /**
@@ -438,7 +515,17 @@ class BlobLocalStorage
   {
     // Untuk blob, kita tidak punya path asli → tebak dari konten (opsional)
     // Di sini kita fallback ke ekstensi jika file asli tersedia, atau gunakan 'application/octet-stream'
-    return 'application/octet-stream';
+    try {
+      try {
+        $getID3 = new \getID3();
+        $fileinfo = $getID3->analyze($filePathOrHash);
+        return $fileinfo['mime_type'];
+      } catch (\Throwable $th) {
+        return (($mime = mime_content_type($filePathOrHash)) ? $mime : 'application/octet-stream');
+      }
+    } catch (\Throwable $th) {
+      return 'application/octet-stream';
+    }
   }
 
   /**
@@ -446,7 +533,7 @@ class BlobLocalStorage
    */
   private function isTextMime(string $mime): bool
   {
-    return str_starts_with($mime, 'text/') || in_array($mime, ['application/json', 'application/xml', 'application/javascript']);
+    return str_starts_with($mime, 'text/') || in_array($mime, $this->mimeTextList);
   }
 
   /**
@@ -454,21 +541,8 @@ class BlobLocalStorage
    */
   private function isAlreadyCompressedMime(string $mime): bool
   {
-    $compressedMimes = [
-      'application/pdf',
-      'application/zip',
-      'application/gzip',
-      'application/x-tar',
-      'video/mp4',
-      'video/avi',
-      'video/mov',
-      'video/webm',
-      'image/jpeg',
-      'image/png',
-      'image/gif',
-      'image/webp',
-    ];
-    return in_array($mime, $compressedMimes);
+    // $compressedMimes = ['application/pdf','application/zip','application/gzip','application/x-tar','video/mp4','video/avi','video/mov','video/webm','image/jpeg','image/png','image/gif','image/webp'];
+    return !$this->isTextMime($mime);
   }
 
   /**
@@ -476,12 +550,12 @@ class BlobLocalStorage
    */
   public function blobExists(string $hash): bool
   {
-    
+
     // Cek DB dulu (lebih cepat). Karena local storage, jadi tidak di check ke DB
     // if (BlobModel::where('hash', $hash)->exists()) {
     //   return true;
     // }
-    
+
     // Opsional: cek file (fallback)
     $path = $this->getBlobPath($hash);
     return file_exists($path);
@@ -498,6 +572,26 @@ class BlobLocalStorage
   }
 
   /**
+   * Deteksi file binary (bukan berdasarkan ekstensi!)
+   */
+  private function isBinaryFile(string $path): bool
+  {
+    $handle = fopen($path, 'rb');
+    $sample = fread($handle, 1024); // baca 1 KB pertama
+    fclose($handle);
+
+    // Cek null byte (indikator kuat binary)
+    if (strpos($sample, "\x00") !== false) {
+      return true;
+    }
+
+    // Cek rasio printable chars
+    $printable = preg_match_all('/[\x20-\x7E]/', $sample);
+    return ($printable / strlen($sample)) < 0.7; // <70% printable = binary
+  }
+
+  /**
+   * @deprecated
    * Proses blob dengan callback (auto-closed)
    * 
    * @param string $hash
@@ -536,13 +630,18 @@ class BlobLocalStorage
 
     try {
       return $callback($stream);
-    } finally {
+    }
+    // catch (\Exception $e) {
+    //   dd('aa');
+    //   dd($e);
+    // }
+    finally {
       fclose($stream);
     }
   }
 
   /**
-   * 
+   * @deprecated
    * Dapatkan isi blob dalam bentuk string (otomatis uncompress jika perlu)
    * 
    * Ambil isi blob (streaming, aman untuk file besar)
@@ -595,18 +694,18 @@ class BlobLocalStorage
     return file_get_contents($path);
   }
 
-  /**
-   * cocok untuk file size kecil
-   * @param string $path relative to blob path .../blobs/
-   */
-  public function getBlob(string $hash): array
-  {
-    $fullPath = $this->getBlobPath($hash);
-    if (!file_exists($fullPath)) {
-      throw new \RuntimeException("Manifest not found: {$fullPath}");
-    }
-    return json_decode(file_get_contents($fullPath), true);
-  }
+  // /**
+  //  * cocok untuk file size kecil
+  //  * @param string $path relative to blob path .../blobs/
+  //  */
+  // public function getBlob(string $hash): array
+  // {
+  //   $fullPath = $this->getBlobPath($hash);
+  //   if (!file_exists($fullPath)) {
+  //     throw new \RuntimeException("Manifest not found: {$fullPath}");
+  //   }
+  //   return json_decode(file_get_contents($fullPath), true);
+  // }
 
   /**
    * Kompresi streaming (tanpa memory overhead)
@@ -614,96 +713,244 @@ class BlobLocalStorage
    * @param resource $dest
    * @param array $metadata
    */
-  private function streamGzipCompress($source, $dest, array &$metadata): void
-  {
-    $context = deflate_init(ZLIB_ENCODING_GZIP, [
-      'level' => 6, // keseimbangan kecepatan & rasio
-    ]);
+  // private function streamGzipCompress($source, $dest, array &$metadata): void
+  // {
+  //   $context = deflate_init(ZLIB_ENCODING_GZIP, [
+  //     'level' => 6,
+  //   ]);
 
-    $size = $metadata["original_size_bytes"];
-    $bytesProcessed = 0;
-    while ($bytesProcessed < $size) {
-      $chunkSize = min(65536, $size - $bytesProcessed);
-      $chunk = fread($source, $chunkSize);
+  //   if ($context === false) {
+  //     throw new \RuntimeException('Gagal inisialisasi deflate context');
+  //   }
 
-      if ($chunk === false || $chunk === '') break;
+  //   $bytesProcessed = 0;
+  //   $totalCompressed = 0;
 
-      $compressed = deflate_add(
-        $context,
-        $chunk,
-        $bytesProcessed + $chunkSize >= $size
-          ? ZLIB_FINISH
-          : ZLIB_NO_FLUSH
-      );
+  //   while (!feof($source)) {
+  //     $chunk = fread($source, 65536); // baca hingga 64KB
+  //     if ($chunk === false) {
+  //       throw new \RuntimeException('Gagal membaca dari source stream');
+  //     }
+  //     if ($chunk === '') {
+  //       break; // EOF
+  //     }
 
-      if ($compressed !== false && $compressed !== '') {
-        fwrite($dest, $compressed);
-      }
+  //     $bytesProcessed += strlen($chunk);
 
-      $bytesProcessed += $chunkSize;
-    }
+  //     // Gunakan ZLIB_SYNC_FLUSH untuk chunk terakhir?
+  //     // Tapi ZLIB_FINISH hanya di akhir — jadi akumulasi saja
+  //     $compressed = deflate_add($context, $chunk, feof($source) ? ZLIB_FINISH : ZLIB_NO_FLUSH);
 
-    // Pastikan flush terakhir
-    $final = deflate_add($context, '', ZLIB_FINISH);
-    if ($final !== false && $final !== '') {
-      fwrite($dest, $final);
-    }
+  //     if ($compressed === false) {
+  //       throw new \RuntimeException('Gagal memproses kompresi chunk');
+  //     }
 
-    $metadata["compression_type"] = 'gzip';
-  }
+  //     if ($compressed !== '') {
+  //       $written = fwrite($dest, $compressed);
+  //       if ($written === false || $written !== strlen($compressed)) {
+  //         throw new \RuntimeException('Gagal menulis ke destination stream');
+  //       }
+  //       $totalCompressed += $written;
+  //     }
+  //   }
 
-  /**
-   * Deteksi file binary (bukan berdasarkan ekstensi!)
-   */
-  private function isBinaryFile(string $path): bool
-  {
-    $handle = fopen($path, 'rb');
-    $sample = fread($handle, 1024); // baca 1 KB pertama
-    fclose($handle);
-
-    // Cek null byte (indikator kuat binary)
-    if (strpos($sample, "\x00") !== false) {
-      return true;
-    }
-
-    // Cek rasio printable chars
-    $printable = preg_match_all('/[\x20-\x7E]/', $sample);
-    return ($printable / strlen($sample)) < 0.7; // <70% printable = binary
-  }
+  //   // Pastikan tidak ada sisa (biasanya sudah di-handle di loop atas via ZLIB_FINISH)
+  //   // Tapi amannya: flush akhir jika konteks belum selesai
+  //   $final = deflate_add($context, '', ZLIB_FINISH);
+  //   if ($final !== '' && $final !== false) {
+  //     $written = fwrite($dest, $final);
+  //     if ($written === false || $written !== strlen($final)) {
+  //       throw new \RuntimeException('Gagal menulis final flush');
+  //     }
+  //     $totalCompressed += $written;
+  //   }
 
 
-  /**
-   * Uncompress blob ke string atau stream
-   * @return string
-   * @return resource Stream yang HARUS di-fclose() oleh consumer
-   */
-  private function decompressGzipBlob(string $path, bool $asStream)
-  {
-    $handle = fopen($path, 'rb');
-    if (!$handle) {
-      throw new RuntimeException("Cannot open compressed blob");
-    }
+  //   $metadata['original_size_bytes'] = $bytesProcessed;
+  //   $metadata['compressed_size_bytes'] = $totalCompressed;
+  //   $metadata['compression_type'] = 'gzip';
+  //   $metadata['compression_ratio'] = $bytesProcessed > 0 ? round($totalCompressed / $bytesProcessed, 4) : 0;
 
-    try {
-      if ($asStream) {
-        // Gunakan filter PHP untuk streaming decompress
-        return stream_filter_append($handle, 'zlib.inflate', STREAM_FILTER_READ) ?
-          $handle :
-          throw new RuntimeException("Failed to attach inflate filter");
-      }
+  //   // 🔑 Perbaikan #2: Validasi hasil kompresi
+  //   $destPath = stream_get_meta_data($dest)['uri'];
+  //   fflush($dest); // Pastikan semua data ditulis ke disk
 
-      // Untuk string: baca & uncompress
-      $content = '';
-      stream_filter_append($handle, 'zlib.inflate', STREAM_FILTER_READ);
-      while (!feof($handle)) {
-        $content .= fread($handle, 8192);
-      }
-      return $content;
-    } catch (\Throwable $e) {
-      fclose($handle);
-      throw new RuntimeException("Decompression failed: " . $e->getMessage());
-    }
-  }
+  //   if (!$this->validateGzipFile($destPath)) {
+  //     throw new \RuntimeException("Compressed file is corrupt: {$destPath}");
+  //   }
+  // }
+
+  // /**
+  //  * 🔑 Validasi file gzip sebelum disimpan
+  //  */
+  // private function validateGzipFile(string $path): bool
+  // {
+  //   $gz = @gzopen($path, 'rb');
+  //   if (!$gz) {
+  //     return false;
+  //   }
+
+  //   $test = @gzread($gz, 1); // cukup 1 byte decompressed
+  //   $ok = ($test !== false && $test !== '');
+  //   gzclose($gz);
+
+  //   return $ok;
+  // }
+  // private function validateGzipFile_x(string $path): bool
+  // {
+  //   if (!is_file($path) || !is_readable($path)) {
+  //     return false;
+  //   }
+
+  //   $stream = fopen($path, 'rb');
+  //   if (!$stream) {
+  //     return false;
+  //   }
+
+  //   // Cek header manual: 2 byte pertama HARUS 0x1F 0x8B
+  //   $header = fread($stream, 2);
+  //   if ($header !== "\x1f\x8b") {
+  //     fclose($stream);
+  //     return false;
+  //   }
+
+  //   // Sekarang coba inflate via stream — tapi dengan error suppression *aman*
+  //   $filter = @stream_filter_append($stream, 'zlib.inflate', STREAM_FILTER_READ);
+  //   if (!$filter) {
+  //     fclose($stream);
+  //     return false;
+  //   }
+
+  //   // Baca dalam mode "try without exception"
+  //   // $oldHandler = set_error_handler(function () { /* suppress */ });
+  //   try {
+  //     // Baca sedikit — jangan terlalu banyak (216 byte compressed bisa jadi besar saat decompress!)
+  //     $test = fread($stream, 1024); // lebih aman: baca compressed bytes, bukan decompressed
+  //     $valid = ($test !== false);
+  //   } catch (\Throwable $e) {
+  //     $valid = false;
+  //   } finally {
+  //     restore_error_handler();
+  //     stream_filter_remove($filter);
+  //     fclose($stream);
+  //   }
+
+  //   return $valid;
+  // }
+
+  // /**
+  //  * Uncompress blob ke string atau stream
+  //  * @return string
+  //  * @return resource Stream yang HARUS di-fclose() oleh consumer
+  //  * @throws \RuntimeException
+  //  */
+  // private function decompressGzipBlob(string $path, bool $asStream)
+  // {
+  //   if ($asStream) {
+  //     $gz = gzopen($path, 'rb');
+  //     if (!$gz) {
+  //       fclose($gz);
+  //       throw new RuntimeException("Cannot open compressed blob");
+  //     }
+  //     return $gz;
+  //   } else {
+  //     return $this->decompressGzToString($path);
+  //   }
+  // }
+
+  // private function decompressGzToString(string $path): string
+  // {
+  //   $gz = gzopen($path, 'rb');
+  //   if (!$gz) {
+  //     throw new RuntimeException("Cannot open compressed blob");
+  //   }
+
+  //   $content = '';
+  //   while (!gzeof($gz)) {
+  //     $chunk = gzread($gz, 8192); // baca 8KB per iterasi
+  //     if ($chunk === false) {
+  //       break;
+  //     }
+  //     $content .= $chunk;
+  //   }
+
+  //   gzclose($gz);
+  //   return $content;
+  // }
+
+  // private function decompressGzipBlobToFile(string $path, string $outputTxtPath): void
+  // {
+  //   $gz = gzopen($path, 'rb');
+  //   if (!$gz) {
+  //     throw new RuntimeException("Cannot open compressed blob");
+  //   }
+
+  //   $txt = fopen($outputTxtPath, 'wb'); // binary write — aman untuk UTF-8/biner
+  //   if (!$txt) {
+  //     gzclose($gz);
+  //     throw new \RuntimeException("Gagal membuat file output: $outputTxtPath");
+  //   }
+
+  //   $totalBytes = 0;
+  //   while (!gzeof($gz)) {
+  //     $chunk = gzread($gz, 8192);
+  //     if ($chunk === false) {
+  //       break;
+  //     }
+  //     $written = fwrite($txt, $chunk);
+  //     if ($written === false) {
+  //       gzclose($gz);
+  //       fclose($txt);
+  //       throw new \RuntimeException("Gagal menulis ke file output");
+  //     }
+  //     $totalBytes += $written;
+  //   }
+
+  //   gzclose($gz);
+  //   fclose($txt);
+
+  //   echo "✅ Berhasil dekompresi $gzFilePath → $outputTxtPath ($totalBytes byte)\n";
+  // }
+  // private function decompressGzipBlob(string $path, bool $asStream)
+  // {
+  //   $handle = fopen($path, 'rb');
+  //   if (!$handle) {
+  //     throw new RuntimeException("Cannot open compressed blob");
+  //   }
+
+  //   try {
+  //     if ($asStream) {
+  //       // Gunakan filter PHP untuk streaming decompress
+  //       // $stream = stream_filter_append($handle, 'zlib.inflate', STREAM_FILTER_READ) ? $handle : throw new RuntimeException("Failed to attach inflate filter");
+  //       try {
+  //         $filter = stream_filter_append($handle, 'zlib.inflate', STREAM_FILTER_READ);
+  //         if ($filter === false) {
+  //           throw new \RuntimeException("Failed to attach zlib.inflate filter for {$hash}");
+  //         }
+  //         return $filter;
+  //       } catch (\Throwable $th) {
+  //         // Hapus filter sebelum fclose()
+  //         if (isset($filter)) {
+  //           @stream_filter_remove($filter);
+  //         }
+  //         if (is_resource($handle)) {
+  //           @fclose($handle);
+  //         }
+  //       }
+  //     }
+
+  //     // Untuk string: baca & uncompress
+  //     $content = '';
+  //     stream_filter_append($handle, 'zlib.inflate', STREAM_FILTER_READ);
+  //     while (!feof($handle)) {
+  //       $content .= fread($handle, 8192);
+  //     }
+  //     return $content;
+  //   } catch (\Throwable $e) {
+  //     fclose($handle);
+  //     throw new RuntimeException("Decompression failed: " . $e->getMessage());
+  //   }
+  // }
 
   // /**
   //  * CONTOH
