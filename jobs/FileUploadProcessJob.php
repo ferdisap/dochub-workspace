@@ -7,6 +7,7 @@ use Dochub\Upload\Cache\NativeCache;
 use Dochub\Upload\Services\CacheCleanup;
 use Dochub\Workspace\Blob;
 use Dochub\Workspace\Enums\ManifestSourceType;
+use Dochub\Workspace\Manifest as WorkspaceManifest;
 use Dochub\Workspace\Models\Manifest;
 use Dochub\Workspace\Services\BlobLocalStorage as BlobStorage;
 use Dochub\Workspace\Services\ManifestSourceParser;
@@ -61,7 +62,7 @@ class FileUploadProcessJob implements ShouldQueue
    */
   public static function withId(string $metadata, int $userId): self
   {
-    $job = new self($metadata, $userId);
+    $job = new static($metadata, $userId);
     Event::listen(JobQueued::class, function (JobQueued $event) use (&$job, $metadata) {
       // set job id for job class
       $job->id = $event->id;
@@ -174,6 +175,39 @@ class FileUploadProcessJob implements ShouldQueue
     rmdir($dir);
   }
 
+    /**
+   * Proses file ke blob storage
+   */
+  public function processFilesToBlobs(array $files, array &$result, bool $unlinkIfSuccess = true): WorkspaceManifest
+  {
+    $blob = new Blob();
+    $totalprocessed = 0;
+    $source = ManifestSourceParser::makeSource(ManifestSourceType::UPLOAD->value, "user-{$this->userId}");
+    return $blob->store($this->userId, $source, $files, 
+      function (string $hash, string $relativePath, string $absolutePath, ?\Exception $e, int $processed, int $total) use (&$totalprocessed, $unlinkIfSuccess) {
+        if ($hash || ($e === null)) {
+          if ($unlinkIfSuccess) @unlink($absolutePath);
+          if ($processed % 10 === 0 || $processed === $total) {
+            $progress = round(($processed / $total) * 100);
+            $this->updateStatus('processing', $progress, [
+              'files_processed' => $processed,
+              'total_files' => $total,
+            ]);
+          }
+        } else {
+          $result['errors'][] = "Failed to process {$relativePath}: " . $e->getMessage();
+          Log::warning("File processing failed", [
+            'file' => $relativePath,
+            'error' => $e->getMessage(),
+          ]);
+          throw new \RuntimeException("File processing failed: {$relativePath}");
+        }
+        $totalprocessed = $processed;
+      }
+    );
+    $result['files_processed'] = $totalprocessed;
+  }
+
   /**
    * Execute the job.
    */
@@ -182,7 +216,7 @@ class FileUploadProcessJob implements ShouldQueue
   public function handle()
   {
     $this->cache = new NativeCache();
-
+    
     $metadata = json_decode($this->metadata, true);
     $fileName = $metadata['file_name'];
     $uploadDir = $metadata['upload_dir'];
@@ -207,6 +241,11 @@ class FileUploadProcessJob implements ShouldQueue
 
       // #1. merge chunked zip
       $this->mergeChunks($totalChunk, $uploadDir, $fileName);
+
+      // #2. change into blob
+      $files = $this->scanDirectory($uploadDir);
+      $wsManifest = $this->processFilesToBlobs($files, $result);
+      $wsManifest->tags = $metadata['tags'] ?? null;
 
       // Update status sukses
       $result['status'] = 'completed';

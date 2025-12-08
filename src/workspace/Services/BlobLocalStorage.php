@@ -10,6 +10,7 @@ use RuntimeException;
 use Dochub\Workspace\Services\LockManager as ServicesLockManager;
 use Dochub\Workspace\Workspace;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Log;
 
 // # Development (default)
 // LOCK_DRIVER=flock
@@ -424,7 +425,7 @@ class BlobLocalStorage
 
     // 🔑 Putuskan apakah perlu dikompres
     $shouldCompress = !$isBinary && !$isAlreadyCompressed;
-    $metadata["stored_size_bytes"] = 0;
+    $metadata["stored_size_bytes"] = 0;    
 
     $this->lockManager->withLock(
       $lockKey,

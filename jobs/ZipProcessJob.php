@@ -91,35 +91,35 @@ class ZipProcessJob extends FileUploadProcessJob implements ShouldQueue
   /**
    * Proses file ke blob storage
    */
-  private function processFilesToBlobs(array $files, array &$result, bool $unlinkIfSuccess = true): WorkspaceManifest
-  {
-    $blob = new Blob();
-    $totalprocessed = 0;
-    $source = ManifestSourceParser::makeSource(ManifestSourceType::UPLOAD->value, "user-{$this->userId}");
-    return $blob->store($this->userId, $source, $files, 
-      function (string $hash, string $relativePath, string $absolutePath, ?\Exception $e, int $processed, int $total) use (&$totalprocessed, $unlinkIfSuccess) {
-        if ($hash || ($e === null)) {
-          if ($unlinkIfSuccess) @unlink($absolutePath);
-          if ($processed % 10 === 0 || $processed === $total) {
-            $progress = round(($processed / $total) * 100);
-            $this->updateStatus('processing', $progress, [
-              'files_processed' => $processed,
-              'total_files' => $total,
-            ]);
-          }
-        } else {
-          $result['errors'][] = "Failed to process {$relativePath}: " . $e->getMessage();
-          Log::warning("File processing failed", [
-            'file' => $relativePath,
-            'error' => $e->getMessage(),
-          ]);
-          throw new \RuntimeException("File processing failed: {$relativePath}");
-        }
-        $totalprocessed = $processed;
-      }
-    );
-    $result['files_processed'] = $totalprocessed;
-  }
+  // private function processFilesToBlobs(array $files, array &$result, bool $unlinkIfSuccess = true): WorkspaceManifest
+  // {
+  //   $blob = new Blob();
+  //   $totalprocessed = 0;
+  //   $source = ManifestSourceParser::makeSource(ManifestSourceType::UPLOAD->value, "user-{$this->userId}");
+  //   return $blob->store($this->userId, $source, $files, 
+  //     function (string $hash, string $relativePath, string $absolutePath, ?\Exception $e, int $processed, int $total) use (&$totalprocessed, $unlinkIfSuccess) {
+  //       if ($hash || ($e === null)) {
+  //         if ($unlinkIfSuccess) @unlink($absolutePath);
+  //         if ($processed % 10 === 0 || $processed === $total) {
+  //           $progress = round(($processed / $total) * 100);
+  //           $this->updateStatus('processing', $progress, [
+  //             'files_processed' => $processed,
+  //             'total_files' => $total,
+  //           ]);
+  //         }
+  //       } else {
+  //         $result['errors'][] = "Failed to process {$relativePath}: " . $e->getMessage();
+  //         Log::warning("File processing failed", [
+  //           'file' => $relativePath,
+  //           'error' => $e->getMessage(),
+  //         ]);
+  //         throw new \RuntimeException("File processing failed: {$relativePath}");
+  //       }
+  //       $totalprocessed = $processed;
+  //     }
+  //   );
+  //   $result['files_processed'] = $totalprocessed;
+  // }
   
   /**
    * Execute the job.

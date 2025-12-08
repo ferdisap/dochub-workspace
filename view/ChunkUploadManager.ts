@@ -435,6 +435,7 @@ export class ChunkedUploadManager {
    * @returns status code 404 = lanjut upload chunk
    */
   private async checkChunk(chunkId: string): Promise<number> {
+    // periksa di localStorage dulu sehingga tidak perlu fetch ke server
     const opt = {
       method: "POST",
       headers: {
@@ -482,6 +483,7 @@ export class ChunkedUploadManager {
         try {
           let responseCheckChunk: number = await this.checkChunk(chunkId);
           // console.log(responseCheckChunk);
+          // tulis di localStorage sehingga
           if (responseCheckChunk === 304) {
             return { id: chunkId, size: chunkSize, status: "uploaded" };
           }
@@ -509,6 +511,7 @@ export class ChunkedUploadManager {
         body: chunk, // 🔑 Langsung kirim Blob
         signal: this.abortController ? this.abortController.signal : null,
       });
+      // tulis di localStorage sehingga ketika checkChunk tidak perlu fetch ke internet
 
       // jika response status 429 (too many attempt karena middleware throtle),
       // 1. ambil response header X-Ratelimit-Reset (limitResetTime)

@@ -7,8 +7,10 @@ use Illuminate\Support\Facades\Cache as LaravelCache;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use TusPhp\Cache\Cacheable;
 use Dochub\Upload\Cache\FileCache;
+use Dochub\Workspace\Services\LockManager;
+use Dochub\Workspace\Workspace;
 
-class NativeCache implements Cacheable, CacheCleanup
+class NativeCache implements Cacheable, LockContract, CacheCleanup
 {
   /** @var CacheRepository */
   protected CacheRepository $store;
@@ -18,6 +20,9 @@ class NativeCache implements Cacheable, CacheCleanup
 
   protected $_driver = 'file';
 
+  // 🔑 Inject lock manager (opsional: gunakan hanya untuk driver yang butuh)
+  protected LockManager $lockManager;
+
   public function __construct()
   {
     // Jika ada store custom, gunakan.
@@ -26,6 +31,7 @@ class NativeCache implements Cacheable, CacheCleanup
     $this->_driver = env('upload.cache.driver', 'file');
     $this->_prefix = env('upload.cache.prefix', 'upload:');
     $this->store = LaravelCache::driver($this->_driver);
+    $this->lockManager = app(LockManager::class);
   }
 
   public function driver(?string $d = null)
@@ -48,7 +54,8 @@ class NativeCache implements Cacheable, CacheCleanup
     return $this->store->get($cacheKey);
   }
 
-  public function getArray($key) : array {
+  public function getArray($key): array
+  {
     $data = $this->get($key) ?? [];
     return is_array($data) ? $data : json_decode($data, true);
   }
@@ -121,11 +128,61 @@ class NativeCache implements Cacheable, CacheCleanup
     return $this->_prefix;
   }
 
+  /**
+   * -------------------------------
+   * implement LockContract
+   * -------------------------------
+   */
+
+  public function isLocked(string $key): bool
+  {
+    if ($this->_driver === 'file' && $this->lockManager) {
+      return method_exists($this->lockManager, 'isLocked')
+        ? $this->lockManager->isLocked($key)
+        : file_exists(Workspace::lockPath() . "/{$key}.lock");
+    }
+    return false;
+  }
+
+  public function lock(string $key, int $timeoutSecs = 10): bool
+  {
+    if ($this->_driver === 'file' && $this->lockManager) {
+      return $this->lockManager->acquire($key, $timeoutSecs * 1000);
+    }
+    return true; // noop untuk Redis/dll
+  }
+
+  public function release(string $key): bool
+  {
+    if ($this->_driver === 'file' && $this->lockManager) {
+      $this->lockManager->release($key);
+      return true;
+    }
+    return true;
+  }
+
+  public function withLock(string $key, callable $callback, int $timeoutSecs = 10): mixed
+  {
+    if ($this->_driver === 'file' && $this->lockManager) {
+      return $this->lockManager->withLock($key, $callback, $timeoutSecs * 1000);
+    }
+
+    // Fallback: tanpa lock (misal Redis, atau dev env)
+    return $callback();
+  }
+
+
+  /**
+   * -------------------------------
+   * implement CacheCleanup
+   * -------------------------------
+   */
+
   public function cleanupIfCompleted(
     string $uploadId,
     array $metadata,
   ): bool {
-    if(count($metadata) < 1) return true; // artinya sudah dibersihkan
+    if (count($metadata) < 1) return true; // artinya sudah dibersihkan
     // Cek status selesai
     $isCompleted = ($metadata['status'] ?? '') === 'completed';
 
@@ -136,7 +193,7 @@ class NativeCache implements Cacheable, CacheCleanup
     // Cleanup jika: selesai diproses ATAU upload 100% tapi belum diproses > 5 menit (5 x 60 detik = 300). 86400 = 24*60*60 = sehari
     // $shouldCleanup = $isCompleted || ($isFullyUploaded && ($metadata['updated_at'] ?? 0) < time() - 300);
     $shouldCleanup = $isCompleted || (($metadata['updated_at'] ?? 0) < time() - 300);
-    
+
     if ($shouldCleanup) {
       return $this->cleanupUpload($uploadId, $metadata);
     }
@@ -148,7 +205,7 @@ class NativeCache implements Cacheable, CacheCleanup
     string $uploadId,
     array $metadata = []
   ): bool {
-    if(count($metadata) < 1) return true; // artinya sudah dibersihkan
+    if (count($metadata) < 1) return true; // artinya sudah dibersihkan
 
     $key = $this->_prefix . $uploadId;
 
@@ -223,7 +280,8 @@ class NativeCache implements Cacheable, CacheCleanup
    * @param string $driver
    * @return int Jumlah yang dibersihkan
    */
-  public function cleanupExpired(int $batchSize = 100): int {
+  public function cleanupExpired(int $batchSize = 100): int
+  {
     // $cache = self::getCacheInstance($driver ?? self::$driver);
     // $cleaned = 0;
 

@@ -10,7 +10,7 @@ return [
     | Supported: "tus", "native", "auto"
     | Auto-detect by UploadServiceProvider jika null atau 'auto'
     */
-  'default' => env('UPLOAD_DRIVER','auto'),
+  'default' => env('UPLOAD_DRIVER','native'),
 
   /*
     |--------------------------------------------------------------------------
@@ -33,8 +33,8 @@ return [
   'strategy' => [
     'shared' => 'native',
     'serverless' => 'native',
-    'container' => 'tus',
-    'dedicated' => 'tus',
+    'container' => 'native', // tus, tapi belum siap
+    'dedicated' => 'native', // tus, tapi belum siap
   ],
 
   /*

@@ -1,5 +1,6 @@
 <?php
 
+use Dochub\Controller\EncryptFileController;
 use Dochub\Controller\UploadController;
 use Dochub\Controller\UploadNativeController;
 use Illuminate\Support\Facades\Route;
@@ -33,6 +34,16 @@ Route::prefix('dochub')->middleware([
   //   dispatch(new UploadCleanupJob());
   //   return response()->json(['status' => 'cleanup scheduled']);
   // })->middleware('auth');
+});
+
+Route::prefix('encryption')->middleware([
+  'throttle:100,1'
+])->group(function(){
+  Route::get('/upload-encrypt', [EncryptFileController::class, 'viewer'])->middleware(['auth']);
+  Route::post('/upload-encrypt-start', [EncryptFileController::class, 'putMetaJson'])->middleware(['auth']);
+  Route::put('/upload-encrypt-chunk', [EncryptFileController::class, 'putChunk'])->middleware(['auth']);
+  Route::post('/upload-encrypt-process', [EncryptFileController::class, 'processChunks'])->middleware(['auth']);
+  Route::get('/download-encrypt-file/{fileId}', [EncryptFileController::class, 'stream'])->middleware(['auth']);
 });
 
 // Tus routes (already exists)

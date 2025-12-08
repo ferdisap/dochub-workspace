@@ -2,6 +2,7 @@
 
 namespace Dochub\Controller;
 
+use Dochub\Job\FileUploadProcessJob;
 use Dochub\Job\ZipProcessJob;
 use Dochub\Job\UploadCleanupJob;
 use Dochub\Upload\Cache\NativeCache;
@@ -19,6 +20,10 @@ use Illuminate\Support\Facades\Redis;
  * Pastikan php://input tersedia
  * Nonaktif di enable_post_data_reading = Off
  * Tapi Laravel default: tersedia
+ * 
+ * PERBAIKAN
+ * selanjutnya tambahakn lock file ke setiap uploaded chunk (chunkId) 
+ * ketika frontend retry upload, file tidak di overwrite. Bisa jadi retry karena request time out tapi server berjalan pararel 
  */
 class UploadNativeController extends UploadController
 {
@@ -63,6 +68,8 @@ class UploadNativeController extends UploadController
       return response()->json(['error' => 'Invalid headers'], 400);
     }
 
+    // nanti validasi apakah di disk sudah ada atau belum
+
     // Buat direktori upload
     $driverUpload = config('upload.driver') === 'tus' ? 'tus' : 'native'; // walau auto adalah file
     $uploadDir = config("upload.driver.{$driverUpload}.root") . "/{$uploadId}";
@@ -70,13 +77,18 @@ class UploadNativeController extends UploadController
       mkdir($uploadDir, 0755, true);
     }
 
-    // 🔑 Simpan chunk dengan streaming
-    $chunkPath = "{$uploadDir}/{$fileName}.part{$chunkIndex}";
-    $success = $this->streamToDisk($chunkPath);
-
+    // 🔑 Simpan chunk dengan streaming pakai tmp path agar tidak corrupt
+    $unique = uniqid();
+    $chunkPathTmp = "{$uploadDir}/{$fileName}.part{$chunkIndex}_{$unique}.tmp";
+    $success = $this->streamToDisk($chunkPathTmp);
+    
     if (!$success) {
       return response()->json(['error' => 'Failed to save chunk'], 500);
     }
+
+    // change to final path
+    $chunkPath = "{$uploadDir}/{$fileName}.part{$chunkIndex}";
+    if($success) rename($chunkPathTmp, $chunkPath);
 
     $this->updateUploadMetadata($uploadId, $chunkId, [
       'upload_id' => $uploadId,
@@ -139,11 +151,13 @@ class UploadNativeController extends UploadController
 
     // Dispatch job untuk prodcution
     $job = ZipProcessJob::withId(json_encode($data), Auth::user()->id);
+    // $job = FileUploadProcessJob::withId(json_encode($data), Auth::user()->id);
     dispatch($job)->onQueue('uploads');
     $jobId = $job->id;
     // untuk debug
     // try {
-    //   ZipProcessJob::dispatchSync(json_encode($data), Auth::user()->id);
+    //   // ZipProcessJob::dispatchSync(json_encode($data), Auth::user()->id);
+    //   FileUploadProcessJob::dispatchSync(json_encode($data), Auth::user()->id);
     //   // set job id to metadata
     //   $data = $this->cache->getArray($uploadId);
     //   $data["job_id"] = 0;

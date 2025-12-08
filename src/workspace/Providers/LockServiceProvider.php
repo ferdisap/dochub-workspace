@@ -16,14 +16,14 @@ class LockServiceProvider extends ServiceProvider
   public function register()
   {
     // belum dipakai kecuali didalam BlobLocalStorage. Lihat BlobServiceProvider
-    // $this->app->bind(LockManager::class, function ($app) {
-    //   return match (Config::get('lock.driver')) {
-    //     'redis' => new RedisLockManager(),
-    //     'flock' => new FlockLockManager(),
-    //     'null' => new NullLockManager(),
-    //     default => new FlockLockManager(), // fallback aman
-    //   };
-    // });
+    $this->app->bind(LockManager::class, function ($app) {
+      return match (Config::get('lock.driver')) {
+        'redis' => new RedisLockManager(),
+        'flock' => new FlockLockManager(),
+        'null' => new NullLockManager(),
+        default => new FlockLockManager(), // fallback aman
+      };
+    });
   }
 
   public function boot()

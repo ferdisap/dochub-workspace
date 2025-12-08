@@ -15,6 +15,7 @@ interface LockManager
 {
     /**
      * Dapatkan lock untuk kunci tertentu
+     * untuk 🔒 Mengamankan akses eksklusif ke sebuah sumber daya (resource) berdasarkan kunci ($key), selama durasi tertentu — untuk mencegah race condition saat operasi kritis berlangsung.
      *
      * @param string $key Nama unik lock (e.g., 'blob_dir:a1')
      * @param int $timeoutMs Waktu tunggu dalam milidetik (default: 30 detik)
@@ -39,6 +40,12 @@ interface LockManager
      * @throws \RuntimeException Jika lock gagal
      */
     public function withLock(string $key, callable $callback, int $timeoutMs = 30000);
+
+    /**
+     * Mengecek apakah sedang di lock atau tdaik
+     * @param string $key
+     */
+    public function isLocked(string $key): bool;
 }
 
 // contoh

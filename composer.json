@@ -5,6 +5,7 @@
     "psr-4": {
       "Dochub\\Workspace\\": "src/workspace",
       "Dochub\\Upload\\": "src/upload",
+      "Dochub\\Encryption\\": "src/encryption",
       "Dochub\\Controller\\": "controllers/",
       "Dochub\\Job\\": "jobs/"
     }

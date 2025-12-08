@@ -6,6 +6,9 @@ use Dochub\Workspace\Workspace;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
+/**
+ * selanjutnya perbaiki agar setiap $key di sanitasi agar tidak mengandung karakter illegal '/, .., dll', contoh $key = preg_replace('/[^a-zA-Z0-9._-]/', '_', $key);
+ */
 class FlockLockManager implements LockManager
 {
   /**
@@ -72,5 +75,19 @@ class FlockLockManager implements LockManager
     } finally {
       $this->release($key);
     }
+  }
+
+  public function isLocked(string $key): bool
+  {
+    $lockFile = Workspace::lockPath() . "/{$key}.lock";
+    if (!file_exists($lockFile)) return false;
+
+    $handle = @fopen($lockFile, 'r');
+    if (!$handle) return true; // assume locked
+
+    $locked = !flock($handle, LOCK_EX | LOCK_NB);
+    flock($handle, LOCK_UN);
+    fclose($handle);
+    return $locked;
   }
 }

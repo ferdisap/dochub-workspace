@@ -1,0 +1,101 @@
+Prompt 1:
+Apakah berbahaya jika saya encrypt file PDF besar dengan di chunk, dan encrypt chunk dengan iv yang sama, menggunakan chacha20poly1305()? Bukankah seharusnya hanya passphrase yang dibutuhkan untuk mendekrip file?
+
+Methode ecnrypt file yang saya gunakan adalah Hybrid asimetris dan symetric. 
+Ayu sebagai pemilik file ingin Budi dan Citra bisa membaca Pdf nya. 
+Sehingga Ayu budi dan citra masing-masing membuat passphrase untuk mengenerate private/public key yang deterministic, dan ada salt serta zeroize agar tidak boros memory. 
+dari public keys ini, akan dibuat kunci untuk men-encrypt file pdf yang besar dengan di chunk.
+
+nah setiap chunk yang di enkripsi ini, apakah saya harus memisahkan tag dari ciphertextnya atau di gabung [cipher | tag] atau saya pisah tagnya dan ditambahkan di akhir saat semua chunk di merged agar mudah di maintenance?
+
+Prompt 2:
+Project ini adalah untuk enkripsi file besar/kecil di browsr dan di upload ke backend laravel.
+Methode ecnrypt file yang saya gunakan adalah Hybrid asimetris dan symetric. 
+
+Contoh:
+Ayu sebagai pemilik file ingin Budi dan Citra bisa membaca Pdf nya. 
+Sehingga Ayu budi dan citra masing-masing membuat passphrase untuk mengenerate private/public key yang deterministic, dan ada salt serta zeroize agar tidak boros memory. 
+dari public keys ini, akan dibuat kunci untuk men-encrypt file pdf yang besar dengan di chunk.
+
+Project ini bernama: Ferdi-Encryption
+1. File (baik size besar atau kecil, semua jenis file) akan di enkripsi menggunakan nonce incremental untuk setiap chunk, (pakai chunk agar resumable). Saya ingin fungsi encrypt ini membuat sebuah metadata untuk setiap chunk, misal ada data chunkId, untuk dicheck apakah ini sudah di upload atau belum saat resume/pause/cancel upload.
+2. Setiap Cipher chunk harus bisa di upload ke backend laravel, lalu di merge. Merging akan dilakukan setelah semua chunk di upload. Asumsikan saat ini laravel menyimpan datanya di Cache terlebih dahulu. Tidak perlu model File saat ini. 
+3. Saat encrypted file di download, daripada karena direkomdasikan di merge, saya lebih prefer mengirim file utuh secara stream response, tapi harus bisa di decrypt oleh frontend secara stream juga (tanpa menunggu seluruh file terkirim).
+4. Untuk typescript, saya ingin fungsi decrypt stream harus bisa mendeteksi setiap chunk data yang terkirim apakah sudah memenuhi [cipher | tag] atau belum. Fungsi ini tidak boleh gagal / salah membaca chunk yang terkirim ke browser.
+5. Proses dari encrypt -> upload -> download -> decrypt harus menghindari RAM komputer yang kecil, request timeout, file corrupt, dan lain lain (tolong tambahkan).
+6. Saat encrypting di frontend, kita tambahkan chunkId deterministik untuk decrypting, (decrypting siap digunakan di WebWorker nantinya).
+7. Untuk di backend laravel, kita tambahkan verifikasi integritas dan checksum saat merge chunk. Laravel harus bisa menangani race condition agar file tidak saling menimpa.
+
+Dari 5 tahapan,
+1. encrypting di frontend, setiap kali chunk sudah di enkripsi, lanjutkan tahapan nomor 2. Recursive hingga semua chunk sudah di enkripsi. 
+2. upload encrypted file ke laravel, Jika semua chunk sudah diupload, lakukan penggabungan dan checkSum.
+3. merging semua chunk di laravel, 
+4. downloading dari laravel dengan stream response, 
+5. decrypt file pakai stream
+
+Tahap satu cukup simpan meta di localStorage saja dahulu, tidak perlu IndexedDB. Jadi upload chunk akan dilakukan serial, sesuai chunkIndex. Nanti kita modifikasi untuk pakai IndexDb.
+Buat file seringkas mungkin, bila perlu satu file agar mudah saat development / belajar. 
+untuk salt, gunakan user.id (must have) untuk setiap person.
+Ganti file header magic menjadi "FRDI", lalu ganti file extension menjadi .fenc.
+Gunakan pakai chacha20poly1305() daripada chacha20() sebagai ecnryptor/decryptor. Simpan file di local storage.
+Setiap request ditambahkan header "X-Requested-With": "XMLHttpRequest";
+
+untuk library @noble, kita gunakan versi, 
+Periksa dan gunakan API yang benar-benar ada di v2.0.1
+"@noble/ciphers": "^2.0.1",
+"@noble/curves": "^2.0.1",
+"@noble/hashes": "^2.0.1",
+
+Gunakan File format
+[ 4B] magic            = "FRDI" // 4 byte
+[ 1B] version          = 1                               // Uint8Array([1])
+[32B] global_checksum  = BLAKE3 dari seluruh file *setelah* header ini
+[16B] file_id          = UUID v4 (acak per file)
+[ 4B] meta_len         = panjang metadata JSON (uint32, little-endian)
+[var] meta_json        = {
+                         "chunk_size": number,
+                         "total_chunks": number,
+                         "nonce_base": string,        // base64, 4 byte
+                         "encrypted_sym_keys": {
+                           [userId: string]: string   // base64, hasil x25519.seal()
+                         },
+                         "original": {
+                            "filename": string,
+                            "mime": string,
+                            "size":number
+                         }
+                       }
+[var] chunks           = 
+   [cipher₀ (N)][tag₀ (16B)]
+   [cipher₁ (N)][tag₁ (16B)]
+   ...
+   [cipherₙ₋₁ (N or <N)][tagₙ₋₁ (16B)]  // chunk terakhir mungkin < chunk_size
+
+catatan:
+global_checksum dihitung dari seluruh byte setelah offset 37 (yaitu dari [file_id] sampai akhir),
+global_checksum = BLAKE3( header[4:] + meta_json + chunk_data ), (tidak termasuk 4B magic + 1B version — agar bisa dihitung saat write streaming)
+BLAKE3 dipilih karena cepat & collision-resistant (bisa pakai @noble/hashes di TS).
+
+-- end -- 
+
+contoh meta_json adalah:
+{
+  "chunk_size": 1048576,
+  "total_chunks": 42,
+  "nonce_base": "base64...",  // 4 byte (untuk nonce = nonce_base + BE64(index))
+  "encrypted_sym_keys": {
+    "user1": "base64(sealed_sym_key)",
+    "user2": "base64(...)"
+  },
+  "original": {
+    "name": "laporan.pdf",
+    "mime": "application/pdf",
+    "size": 44040192
+  }
+}
+
+// Cache key:
+//   ferdi:chunks:{fileId}         → array chunk index yang sudah ada (misal [0,1,2])
+//   ferdi:chunk:{fileId}:{idx}    → data chunk ke-idx (binary)
+//   ferdi:meta:{fileId}           → metadata JSON (dikirim di chunk ke-0 via header/body)
+//   ferdi:lock:{fileId}           → lock key (untuk merge final)
