@@ -11,9 +11,10 @@
             class="upload-zone"
             @dragover.prevent
             @drop.prevent="handleDrop"
-            @click="openFilePicker"
         >
-            <div v-if="!uploading">
+            <div v-if="!uploading" class="file">
+              <div class="svg" title="browse"
+                @click="openFilePicker">
                 <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="48"
@@ -26,9 +27,16 @@
                     <polyline points="17 8 12 3 7 8"></polyline>
                     <line x1="12" y1="3" x2="12" y2="15"></line>
                 </svg>
+              </div>
+              <div class="info">
                 <p>Drag & drop ZIP file here</p>
                 <p class="hint">or click to browse</p>
-                <p class="limits">Max: {{ formatBytes(maxSize) }} • ZIP only</p>
+                <p class="limits">Max: {{ formatBytes(maxSize) }}</p>
+                <p class="browse-info">{{ browseInfo }}</p>
+              </div>
+              <div class="svg" title="upload" @click.stop="submitUpload">
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send-icon lucide-send"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></svg>
+              </div>
             </div>
 
             <!-- Progress -->
@@ -124,7 +132,7 @@ const envClass = computed(() => ({
     "env-container": environment.value === "container",
 }));
 
-const fileInput = ref<HTMLElement | null>(null);
+const fileInput = ref<HTMLInputElement | null>(null);
 const strategy = ref<string>("auto");
 const result = ref<null | {
     type: string;
@@ -138,10 +146,23 @@ const isPaused = ref(false);
 const progress = ref(0);
 const startTime = ref<number | null>(null);
 const uploadedBytes = ref(0);
+const fileBag = ref<File[] | FileList | null>(null);
 
 const speed = ref(0);
 const status = ref<{uploadId:string, status:string} | null>(null);
 const uploadManager = new ChunkedUploadManager();
+
+const browseInfo = computed(() => {
+  if(fileBag.value){
+    const files = fileBag.value;
+    if(files){
+      const total = files?.length;
+      const size = formatBytes(Array.from(files, (file) => file.size).reduce((accumulator, currentValue) => accumulator + currentValue, 0));
+      const names = Array.from(files, (file) => file.name).join(", ");
+      return `Total ${size}, ${total} file. \n ${names.substring(0,50)}`
+    }
+  }
+})
 
 onMounted(async () => {
     uploadManager.onStart = handleStart;
@@ -163,19 +184,26 @@ const openFilePicker = () => {
 };
 
 const handleFileSelect = async (event: InputEvent) => {
-    const files = (event.target as HTMLInputElement).files!;
-    if (files.length === 0) return;
-    // const file = files[0];
-    await processFiles(files);
-    (event.target as HTMLInputElement).value = "";
+    const fileList = fileInput.value!.files!;
+    if (fileList.length === 0) return;
+    if(fileList){
+      fileBag.value = fileList
+    }
 };
 
 const handleDrop = (event: DragEvent) => {
     if(isPaused.value) return;
-    const filelist = event.dataTransfer?.files;
-    const files = Array.from(filelist!);
-    processFiles(files);
+    const fileList = event.dataTransfer?.files;
+    // const files = Array.from(fileList!);
+    if(fileList){
+      fileBag.value = fileList
+    }
 };
+
+const submitUpload = async () => {
+  if(fileBag.value) await processFiles(fileBag.value!);
+  fileInput.value!.value = '';
+}
 
 const handleStart = () => {
     uploading.value = true;
@@ -363,214 +391,3 @@ const checkStatus = async () => {
 //   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 // };
 </script>
-
-<style scoped>
-.upload-manager {
-    max-width: 600px;
-    margin: 2rem auto;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-        sans-serif;
-}
-
-.env-badge {
-    background: #f0f0f0;
-    border-radius: 4px;
-    padding: 8px 12px;
-    margin-bottom: 1rem;
-    font-size: 0.875rem;
-    display: flex;
-    gap: 1rem;
-    justify-content: center;
-}
-
-.env-shared {
-    background: #fff3cd;
-    border-left: 4px solid #ffc107;
-}
-
-.env-dedicated {
-    background: #d4edda;
-    border-left: 4px solid #28a745;
-}
-
-.env-container {
-    background: #cce5ff;
-    border-left: 4px solid #007bff;
-}
-
-.upload-zone {
-    border: 2px dashed #ccc;
-    border-radius: 8px;
-    padding: 3rem 2rem;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    background: #fafafa;
-}
-
-.upload-zone:hover {
-    border-color: #007bff;
-    background: #f8f9fa;
-}
-
-.upload-zone svg {
-    stroke: #6c757d;
-    margin-bottom: 1rem;
-}
-
-.upload-zone p {
-    margin: 0.5rem 0;
-    color: #495057;
-}
-
-.hint {
-    font-size: 0.875rem;
-    color: #6c757d;
-}
-
-.limits {
-    font-size: 0.75rem;
-    color: #6c757d;
-    margin-top: 1rem;
-}
-
-.progress-container {
-    text-align: left;
-}
-
-.progress-bar {
-    height: 8px;
-    background: #e9ecef;
-    border-radius: 4px;
-    margin-bottom: 1rem;
-    overflow: hidden;
-}
-
-.progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #007bff, #0056b3);
-    transition: width 0.3s ease;
-}
-
-.progress-info {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.875rem;
-}
-
-.progress-percent {
-  margin-right: 1rem;
-}
-
-.progress-percent-speed {
-  width:150px;
-}
-
-.control-btn {
-    padding: 4px 8px;
-    background: #6c757d;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.75rem;
-}
-
-.control-btn:hover {
-    background: #545b62;
-}
-
-.control-btn.cancel {
-    background: #dc3545;
-}
-
-.control-btn.cancel:hover {
-    background: #c82333;
-}
-
-.control-btn.resume {
-    background: #24c005;
-}
-
-.control-btn.resume:hover {
-    background: #23c833;
-}
-
-.result {
-    margin-top: 1.5rem;
-    padding: 1rem;
-    border-radius: 4px;
-}
-
-.result.completed {
-    background: #d4edda;
-    border: 1px solid #c3e6cb;
-    color: #155724;
-}
-
-.result.failed {
-    background: #f8d7da;
-    border: 1px solid #f5c6cb;
-    color: #721c24;
-}
-
-.result.processing, .result.uploaded {
-    background: #f5f8d7;
-    border: 1px solid #f6fac6;
-    color: #1a1a1a;
-}
-
-.result-icon {
-    float: left;
-    margin-right: 1rem;
-}
-
-.result-icon svg {
-    width: 24px;
-    height: 24px;
-    stroke-width: 2;
-}
-
-.result.completed .result-icon svg {
-    stroke: #28a745;
-}
-
-.result.error .result-icon svg {
-    stroke: #dc3545;
-}
-
-.result-content h3 {
-    margin: 0 0 0.5rem 2rem;
-    font-size: 1.125rem;
-}
-
-.result-content p {
-    margin: 0 0 0.5rem 2rem;
-    font-size: 0.875rem;
-    overflow: auto;
-}
-
-.job-info {
-    margin:0 0 0.5rem 2rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-    font-size: 0.875rem;
-}
-
-.btn-sm {
-    padding: 2px 6px;
-    font-size: 0.75rem;
-    background: #007bff;
-    color: white;
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-}
-
-.hidden {
-    display: none;
-}
-</style>

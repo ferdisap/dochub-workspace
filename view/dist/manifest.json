@@ -1,0 +1,11 @@
+{
+  "view/src/upload.ts": {
+    "file": "assets/upload.js",
+    "name": "upload",
+    "src": "view/src/upload.ts",
+    "isEntry": true,
+    "css": [
+      "assets/upload.css"
+    ]
+  }
+}

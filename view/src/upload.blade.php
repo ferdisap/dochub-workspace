@@ -15,9 +15,11 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <!-- Styles / Scripts -->
-    @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
-        @vite(['resources/views/upload/app.js'])
+    @if (file_exists(public_path('vendor/workspace/assets/manifest.json')) || file_exists(public_path('hot')))
+        @vite(['resources/views/vendor/workspace/upload.ts'])
     @else
+        <link href="/vendor/workspace/assets/upload.css" rel="stylesheet" />
+        <script src="/vendor/workspace/assets/upload.js" type="module"></script>
         <style>
             /*! tailwindcss v4.0.7 | MIT License | https://tailwindcss.com */
             @layer theme {
@@ -1520,44 +1522,35 @@
             }
         </style>
     @endif
-
-    <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
-    .card-header {
-      width: 100%;
-      display:block;
-      text-align:center;
-    }
-    </style>
 </head>
 
-<body class="bg-[#FDFDFC] dark:bg-[#0a0a0a] text-[#1b1b18] flex p-6 lg:p-8 items-center lg:justify-center min-h-screen flex-col">
-    <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-md-8">
-                <div class="card">
-                    <div class="card-header">
-                        <h2>File Upload</h2>
-                        <p class="text-muted">Upload ZIP files for workspace synchronization</p>
-                    </div>
-                    <div class="card-body" id="app">
-                    </div>
-                </div>
-
-                <!-- Status Section -->
-                <div class="card mt-4" id="status-section" style="display:none">
-                    <div class="card-header">
-                        <h3>Processing Status</h3>
-                    </div>
-                    <div class="card-body">
-                        <div id="status-content"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+<body>
+  <div class="card">
+      <div class="card-header">
+          <h2 class="title">File Upload</h2>
+          <p>Upload files for workspace synchronization</p>
+      </div>
+      <div class="card-body" id="upload-app">
+      </div>
+  </div>
+  <!-- Status Section -->
+  <div class="card" id="status-section" style="display:none">
+      <div class="card-header">
+          <h3>Processing Status</h3>
+      </div>
+      <div class="card-body">
+          <div id="status-content"></div>
+      </div>
+  </div>
+  <!-- Encrypt Section -->
+  <div class="card">
+      <div class="card-header">
+          <h2 class="title">Encryption Section</h2>
+          <p>Encrypting files end-to-end.</p>
+      </div>
+      <div class="card-body" id="encrypt-app">
+      </div>
+  </div>
 </body>
 
 </html>

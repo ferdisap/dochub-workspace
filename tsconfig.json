@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "strict": true,
+    "jsx": "preserve",
+    "allowJs": false,
+    "esModuleInterop": true,
+    "types": [
+      "vite/client",
+      "@types/wicg-file-system-access"
+    ],
+    "baseUrl": ".",
+  }
+}

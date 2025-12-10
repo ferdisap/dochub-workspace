@@ -24,6 +24,24 @@ class WorkspaceServiceProvider extends ServiceProvider
     $this->loadRoutesFrom(__DIR__ . '/../../../routes/web.php');
     $this->loadRoutesFrom(__DIR__ . '/../../../routes/api.php');
 
+    // ✅ View >>> php artisan vendor:publish --tag=workspace-views
+    // 1. Daftarkan Views
+    $this->loadViewsFrom(__DIR__ . '/../../../view/src', 'workspace-views');
+
+    // 2. Tentukan apa yang bisa di-publish
+    $this->publishes([
+      // A. Views untuk di-publish
+      __DIR__ . '/../../../view/src' => resource_path('views/vendor/workspace'),
+    ], 'workspace-views'); // 'views' adalah TAG publikasi
+
+    // ✅ Asset >>> php artisan vendor:publish --tag=workspace-assets
+    // B. Assets untuk di-publish
+    $this->publishes([
+      __DIR__ . '/../../../view/dist' => public_path('vendor/workspace'),
+    ], 'workspace-assets'); // 'assets' adalah TAG publikasi
+
+
+
     // check and create path
     @mkdir(Workspace::path(), 0755, true);
 
@@ -60,11 +78,11 @@ class WorkspaceServiceProvider extends ServiceProvider
 
     // // Load commands
     if ($this->app->runningInConsole()) {
-        $this->commands([
-            WorkspaceCleanupRollbackCommand::class,
-            WorkspaceCompareCommand::class,
-            WorkspaceRollbackCommand::class,
-        ]);
+      $this->commands([
+        WorkspaceCleanupRollbackCommand::class,
+        WorkspaceCompareCommand::class,
+        WorkspaceRollbackCommand::class,
+      ]);
     }
   }
 
