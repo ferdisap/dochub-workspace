@@ -6,6 +6,7 @@ import { numberToBytesLE } from '@noble/curves/utils.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { argon2id, createSHA256 } from 'hash-wasm';
 import { hkdf } from '@noble/hashes/hkdf.js';
+import { deriveFileIdBin } from './ferdi-encryption';
 
 // ========== UTILS ==========
 const enc = new TextEncoder();
@@ -18,12 +19,12 @@ function base64ToBytes(s: string): Uint8Array {
   return Uint8Array.from(atob(s), c => c.charCodeAt(0));
 }
 
-function uuidv4Bin(): Uint8Array {
-  const b = randomBytes(16);
-  b[6] = (b[6] & 0x0f) | 0x40;
-  b[8] = (b[8] & 0x3f) | 0x80;
-  return b;
-}
+// function uuidv4Bin(): Uint8Array {
+//   const b = randomBytes(16);
+//   b[6] = (b[6] & 0x0f) | 0x40;
+//   b[8] = (b[8] & 0x3f) | 0x80;
+//   return b;
+// }
 
 // ========== KEY DERIVATION (UNCHANGED) ==========
 export async function deriveX25519KeyPair(
@@ -217,19 +218,23 @@ async function saveStreaming(
 export async function encryptAndSaveFile(
   file: File,
   recipientPublicKeys: Record<string, string | Uint8Array>,
-  currentUserPassphrase: string,
-  currentUserId: string,
+  ownerPrivateKey:Uint8Array,
+  ownerPublicKey:Uint8Array,
+  // currentUserPassphrase: string,
+  currentUserId: string | number,
   chunkSize = 1_000_000
 ): Promise<void> {
   // --- 1. Derive own key pair (same) ---
-  const { privateKey: ownPriv, publicKey: ownPub } = await deriveX25519KeyPair(
-    currentUserPassphrase,
-    currentUserId
-  );
+  // const { privateKey: ownPriv, publicKey: ownPub } = await deriveX25519KeyPair(
+  //   currentUserPassphrase,
+  //   currentUserId
+  // );
+
+  // --- 1. Derive file id  ---
+  const { str: fileId, bin: fileIdBin } = await deriveFileIdBin(file, String(currentUserId));
 
   // --- 2. Ephemeral sym key (same) ---
   const symKey = randomBytes(32);
-  const fileIdBin = uuidv4Bin();
 
   // --- 3. Encrypt symKey per recipient (same) ---
   const encryptedSymKeys: Record<string, string> = {};
@@ -238,7 +243,7 @@ export async function encryptAndSaveFile(
       ? base64ToBytes(pubKeyB64OrBytes)
       : pubKeyB64OrBytes;
 
-    const wrapKey = deriveWrapKey(ownPriv, pubKey, userId);
+    const wrapKey = deriveWrapKey(ownerPrivateKey, pubKey, userId);
     const nonce = randomBytes(12);
     const wrapped = chacha20poly1305(wrapKey, nonce).encrypt(symKey);
     encryptedSymKeys[userId] = bytesToBase64(new Uint8Array([...nonce, ...wrapped]));
@@ -253,7 +258,7 @@ export async function encryptAndSaveFile(
     total_chunks: totalChunks,
     nonce_base: bytesToBase64(nonceBase),
     encrypted_sym_keys: encryptedSymKeys,
-    owner_pub_key: bytesToBase64(ownPub),
+    owner_pub_key: bytesToBase64(ownerPublicKey),
     original: {
       filename: file.name,
       mime: file.type,

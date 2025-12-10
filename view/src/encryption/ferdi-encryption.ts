@@ -12,6 +12,9 @@ import { hkdf } from '@noble/hashes/hkdf.js';
 // ========== UTILS
 const enc = new TextEncoder();
 const dec = new TextDecoder();
+const uploadChunkUrl = '/api/upload-encrypt-chunk';
+const encryptStartUrl = '/api/upload-encrypt-start';
+const processChunkUrl = '/api/upload-encrypt-process';
 
 // Hex lebih mudah dibaca/debug — cocok untuk hashname, file ID, logging.. 
 // Tapi tidak bisa menghandle karakter non AsCII (>= 128 seperti "," "_" dll);
@@ -104,7 +107,7 @@ export async function hashFileThreshold(file: File, thresholdMB = 1) {
 // Anda sebut pakai `hashFileThreshold`, asumsikan mengembalikan hex string SHA-256
 // Contoh: "a1b2c3d4e5f6..." (64 karakter hex)
 
-async function deriveFileIdBin(file: File, userId: string): Promise<{
+export async function deriveFileIdBin(file: File, userId: string): Promise<{
   str: string;   // UUID-like hex string (32 char), BUKAN teks bebas
   bin: Uint8Array; // Uint8Array(16)
 }> {
@@ -222,9 +225,8 @@ export function deriveWrapKey(ownPriv: Uint8Array, pubKey: Uint8Array, userId: s
 
 // ========== MAIN ENCRYPTION (chunked, streaming, RAM-friendly)
 async function requestUpload(fileId: string, metaJson: any) {
-  const endpoint = "/api/upload-encrypt-start";
   const totalChunks = metaJson.total_chunks;
-  const res = await fetch(endpoint, {
+  const res = await fetch(encryptStartUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -238,10 +240,9 @@ async function requestUpload(fileId: string, metaJson: any) {
   });
 }
 async function uploadChunk(fileId: string, encryptedChunk: Uint8Array, chunkIndex: number) {
-  const endpoint = "/api/upload-encrypt-chunk";
   const hash = await hashChunk(encryptedChunk);
   try {
-    const res = await fetch(endpoint, {
+    const res = await fetch(uploadChunkUrl, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/octet-stream',
@@ -265,8 +266,7 @@ async function uploadChunk(fileId: string, encryptedChunk: Uint8Array, chunkInde
   }
 }
 async function prosesChunk(fileId: string, hashes: string[]) {
-  const endpoint = "/api/upload-encrypt-process";
-  const res = await fetch(endpoint, {
+  const res = await fetch(processChunkUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application.json',
@@ -287,7 +287,8 @@ async function prosesChunk(fileId: string, hashes: string[]) {
 export async function uploadFile(
   file: File,
   recipientPublicKeys: Record<string, Uint8Array>,
-  currentUserPassphrase: string,
+  ownerPrivateKey:Uint8Array,
+  ownerPublicKey:Uint8Array,
   currentUserId: string | number,
   chunkSize = 1_000_000 // 1MB default
 ) {
@@ -297,12 +298,12 @@ export async function uploadFile(
   const { str: fileId, bin: fileIdBin } = await deriveFileIdBin(file, String(currentUserId));
 
   // 2. Encrypt symKey for each recipient (X25519 + ChaCha20-Poly1305)
-  const { privateKey: ownPriv, publicKey:ownPub } = await deriveX25519KeyPair(currentUserPassphrase, currentUserId);
+  // const { privateKey: ownPriv, publicKey:ownPub } = await deriveX25519KeyPair(currentUserPassphrase, currentUserId);
   // console.log(currentUserPassphrase, currentUserId, bytesToBase64(ownPriv),bytesToBase64(ownPub));
   // throw new Error("aa"); 
   const encryptedSymKeys: Record<string, string> = {};
   for (const [userId, pubKey] of Object.entries(recipientPublicKeys)) {
-    const wrapKey = deriveWrapKey(ownPriv, pubKey, userId);
+    const wrapKey = deriveWrapKey(ownerPrivateKey, pubKey, userId);
     // nonce unik per encryption (12B CSPRNG)
     const nonce = randomBytes(12);
     const wrapped = chacha20poly1305(wrapKey, nonce).encrypt(symKey);
@@ -317,7 +318,7 @@ export async function uploadFile(
     total_chunks: totalChunks,
     nonce_base: bytesToBase64(nonceBase),
     encrypted_sym_keys: encryptedSymKeys,
-    owner_pub_key: bytesToBase64(ownPub),
+    owner_pub_key: bytesToBase64(ownerPublicKey),
     original: {
       filename: file.name,
       mime: file.type,

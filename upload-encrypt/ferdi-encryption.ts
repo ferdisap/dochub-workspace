@@ -7,6 +7,7 @@ import { numberToBytesLE } from '@noble/curves/utils.js';
 import { sha512, sha256 } from '@noble/hashes/sha2.js';
 import { argon2id, createSHA256 } from 'hash-wasm';
 import { hkdf } from '@noble/hashes/hkdf.js';
+import { deriveX25519KeyPair } from './ferdi-full-encryption';
 
 
 // ========== UTILS
@@ -174,37 +175,37 @@ export function createSalt(userId: string | number): Uint8Array {
 // ferdi-kdf.ts
 // import { argon2id } from 'hash-wasm';
 // import { x25519 } from '@noble/curves/ed25519.js';
-export async function deriveX25519KeyPair(
-  passphrase: string,
-  userId: string
-): Promise<{
-  privateKey: Uint8Array;
-  publicKey: Uint8Array;
-}> {
-  const salt = `ferdi:salt:${userId}`;
+// export async function deriveX25519KeyPair(
+//   passphrase: string,
+//   userId: string
+// ): Promise<{
+//   privateKey: Uint8Array;
+//   publicKey: Uint8Array;
+// }> {
+//   const salt = `ferdi:salt:${userId}`;
 
-  // Argon2id — memory-hard, cepat di WASM
-  const rawKey = await argon2id({
-    password: passphrase,
-    salt,
-    iterations: 3,
-    memorySize: 16384, // 16 MB — lebih ringan untuk HP
-    parallelism: 1,
-    hashLength: 32,
-    outputType: 'binary'
-  }) as Uint8Array;
+//   // Argon2id — memory-hard, cepat di WASM
+//   const rawKey = await argon2id({
+//     password: passphrase,
+//     salt,
+//     iterations: 3,
+//     memorySize: 16384, // 16 MB — lebih ringan untuk HP
+//     parallelism: 1,
+//     hashLength: 32,
+//     outputType: 'binary'
+//   }) as Uint8Array;
 
-  // RFC 7748 adjustment
-  const priv = rawKey.slice(); // copy
-  priv[0] &= 248;
-  priv[31] &= 127;
-  priv[31] |= 64;
+//   // RFC 7748 adjustment
+//   const priv = rawKey.slice(); // copy
+//   priv[0] &= 248;
+//   priv[31] &= 127;
+//   priv[31] |= 64;
 
-  return {
-    privateKey: priv,
-    publicKey: x25519.getPublicKey(priv)
-  };
-}
+//   return {
+//     privateKey: priv,
+//     publicKey: x25519.getPublicKey(priv)
+//   };
+// }
 
 export function deriveWrapKey(ownPriv: Uint8Array, pubKey: Uint8Array, userId: string) {
   // console.log(ownPriv, pubKey);

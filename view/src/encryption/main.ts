@@ -11,7 +11,7 @@ import { encryptAndSaveFile } from './ferdi-full-encryption';
 
 // Simulasi: ambil file dari input
 const input = document.getElementById('fileInput') as HTMLInputElement;
-input.onchange = () => {
+input.onchange = async () => {
   const file = input.files?.[0];
   if (!file) return;
 
@@ -29,12 +29,17 @@ input.onchange = () => {
   const userId = 'ayu123'; // ayu789 => b5cd30fc-1f8b-4779-a863-8a4722572911, ayu123 => e9ccdea4-035d-4f90-bfcd-70a17a4411c5
   const passphrase = 'ayu-secret-pass';
 
-  // // enrcyptAndSave(file, recipients, passphrase, userId);
-  encryptAndUpload(file, recipients, passphrase, userId);
+  const { privateKey: ownPriv, publicKey: ownPub } = await deriveX25519KeyPair(
+    passphrase,
+    userId
+  );
+
+  // enrcyptAndSave(file, recipients, ownPriv, ownPub, userId);
+  encryptAndUpload(file, recipients, ownPriv, ownPub, userId);
   // readDecryptedFile(file);
 }
 
-async function enrcyptAndSave(file: File, recipients: Record<string, any>, passphrase: string, userId: string) {
+async function enrcyptAndSave(file: File, recipients: Record<string, any>, ownerPrivateKey: Uint8Array, ownerPublicKey: Uint8Array, ownerUserId:string | number) {
   const recipientPublicKeys: Record<string, Uint8Array> = {};
   for (const [name, { userId, passphrase }] of Object.entries(recipients)) {
     const { publicKey } = await deriveX25519KeyPair(passphrase, userId);
@@ -42,7 +47,7 @@ async function enrcyptAndSave(file: File, recipients: Record<string, any>, passp
   }
 
   try {
-    await encryptAndSaveFile(file, recipientPublicKeys, passphrase, userId);    
+    await encryptAndSaveFile(file, recipientPublicKeys, ownerPrivateKey, ownerPublicKey, ownerUserId);    
     console.log('🎉 Upload selesai! File siap diunduh.');
   }catch (err) {
     console.error(err);
@@ -51,7 +56,7 @@ async function enrcyptAndSave(file: File, recipients: Record<string, any>, passp
   }
 }
 
-async function encryptAndUpload(file: File, recipients: Record<string, any>, passphrase: string, userId: string) {
+async function encryptAndUpload(file: File, recipients: Record<string, any>, ownerPrivateKey: Uint8Array, ownerPublicKey: Uint8Array, ownerUserId:string | number) {
 
   const recipientPublicKeys: Record<string, Uint8Array> = {};
   for (const [name, { userId, passphrase }] of Object.entries(recipients)) {
@@ -62,7 +67,7 @@ async function encryptAndUpload(file: File, recipients: Record<string, any>, pas
   // === 3. Enkripsi file (streaming, low RAM) ===
   try {
 
-    await uploadFile(file, recipientPublicKeys, passphrase, userId);
+    await uploadFile(file, recipientPublicKeys, ownerPrivateKey, ownerPublicKey, ownerUserId);
     console.log('🎉 Upload selesai! File siap diunduh.');
 
     // Opsional: auto-download setelah upload
@@ -75,33 +80,38 @@ async function encryptAndUpload(file: File, recipients: Record<string, any>, pas
   }
 }
 
-function readDecryptedFile(file:File){
+async function readDecryptedFile(file:File){
   const passphrase = "budi-secret-pass";
   const userId = "budi123";
-  readAndOpenPdf(file,passphrase, userId);
+  const { privateKey, publicKey} = await deriveX25519KeyPair(passphrase, userId);
+  readAndOpenPdf(file, privateKey, userId);
 }
 
-function openNewWindow(fileId: string) {
+async function openNewWindow(fileId: string) {
   const passphrase = "budi-secret-pass";
   const userId = "budi123";
-  return downloadAndOpenPdf(fileId, passphrase, userId);
+  const { privateKey, publicKey} = await deriveX25519KeyPair(passphrase, userId);
+  return downloadAndOpenPdf(fileId, privateKey, userId);
 }
-function openInCanvas(fileId: string) {
+async function openInCanvas(fileId: string) {
   const passphrase = "budi-secret-pass";
   const userId = "budi123";
+  const { privateKey, publicKey} = await deriveX25519KeyPair(passphrase, userId);
   const canvasId = "pdf-canvas";
-  return renderPdfToCanvas(fileId, passphrase, userId, canvasId);
+  return renderPdfToCanvas(fileId, privateKey, userId, canvasId);
 }
-function renderStreamPdf(fileId: string) {
+async function renderStreamPdf(fileId: string) {
   const passphrase = "budi-secret-pass";
   const userId = "budi123";
+  const { privateKey, publicKey} = await deriveX25519KeyPair(passphrase, userId);
   const canvasId = "pdf-canvas";
-  return renderLargePdf(fileId, passphrase, userId, canvasId);
+  return renderLargePdf(fileId, privateKey, userId, canvasId);
 }
-function printFile(fileId: string) {
+async function printFile(fileId: string) {
   const passphrase = "budi-secret-pass";
   const userId = "budi123";
-  return printTextFile(fileId, passphrase, userId);
+  const { privateKey, publicKey} = await deriveX25519KeyPair(passphrase, userId);
+  return printTextFile(fileId, privateKey, userId);
 }
 
 const btnDownload = document.getElementById('downloadFile') as HTMLButtonElement;

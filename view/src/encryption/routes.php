@@ -1,5 +1,7 @@
 <?php
 
+// script ini tidak di pakai lai karena sudah di modulasi
+
 use App\Http\Controllers\Auth\ForOAuthClientController;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Dashboard\OAuthClientController;

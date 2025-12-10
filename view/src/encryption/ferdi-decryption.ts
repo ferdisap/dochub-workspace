@@ -345,8 +345,8 @@ async function computeGlobalChecksum(
 // --- Pipeline 2: Decrypt
 async function decryptStream(
   stream: ReadableStream<Uint8Array>,
-  passphrase: string,
-  userId: string,
+  readerPrivateKey: Uint8Array,
+  readerUserId: string,
   checksumResult: ChecksumResult
 ): Promise<DecryptedFileResult> {
   const { fileIdBin, metaJson } = checksumResult;
@@ -357,10 +357,10 @@ async function decryptStream(
   }
 
   // ===== STEP 4: Dekripsi symKey untuk pengguna ini
-  debugLog(`🔍 Langkah 4: Mendekripsi symKey untuk user "${userId}"...`);
-  const encryptedWrapB64 = encrypted_sym_keys[userId];
+  debugLog(`🔍 Langkah 4: Mendekripsi symKey untuk user "${readerUserId}"...`);
+  const encryptedWrapB64 = encrypted_sym_keys[readerUserId];
   if (!encryptedWrapB64) {
-    throw new Error(`No encrypted sym key for user "${userId}" (available: ${Object.keys(encrypted_sym_keys).join(', ')})`);
+    throw new Error(`No encrypted sym key for user "${readerUserId}" (available: ${Object.keys(encrypted_sym_keys).join(', ')})`);
   }
 
   const encryptedWrap = base64ToBytes(encryptedWrapB64);
@@ -374,9 +374,9 @@ async function decryptStream(
   debugLog(`🔑 Wrap nonce (hex): ${bytesToHex(wrapNonce)}`);
 
   // Derive private key pengguna & unwrap symKey
-  const { privateKey: ownPriv } = await deriveX25519KeyPair(passphrase, userId);
+  // const { privateKey: ownPriv } = await deriveX25519KeyPair(passphrase, readerUserId);
   const ownerPub = base64ToBytes(owner_pub_key);
-  const wrapKey = deriveWrapKey(ownPriv, ownerPub, userId);
+  const wrapKey = deriveWrapKey(readerPrivateKey, ownerPub, readerUserId);
   debugLog(`🔑 Wrap key derived (first 8B): ${bytesToHex(wrapKey.subarray(0, 8))}`);
 
   let symKey: Uint8Array;
@@ -468,17 +468,17 @@ async function decryptStream(
  * ✅ Streaming: chunk didekripsi satu per satu tanpa buffer penuh
  * 
  * @param file File terenkripsi (.fenc) yang dibaca dari disk/user
- * @param passphrase Passphrase pengguna saat ini
- * @param userId ID pengguna saat ini (harus ada di encrypted_sym_keys)
+ * @param readerPrivateKey Passphrase pengguna saat ini
+ * @param readerUserId ID pengguna saat ini (harus ada di encrypted_sym_keys)
  * @returns Promise<DecryptedFileResult> — stream plaintext + metadata
  */
 export async function readAndDecryptFile(
   file: File,
-  passphrase: string,
-  userId: string
+  readerPrivateKey:Uint8Array,
+  readerUserId: string,
 ): Promise<DecryptedFileResult> {
   debugLog(`🚀 Memulai baca & decrypt file lokal: ${file.name}`);
-  debugLog(`👤 User: ${userId}`);
+  debugLog(`👤 User: ${readerUserId}`);
 
   // --- STEP 0: Buka file sebagai ReadableStream
   const fileStream = file.stream();
@@ -505,8 +505,8 @@ export async function readAndDecryptFile(
   // ========== PIPELINE 2: Decrypt (setelah checksum valid)
   const decryptResult = await decryptStream(
     decryptBranch,
-    passphrase,
-    userId,
+    readerPrivateKey,
+    readerUserId,
     checksumResult
   );
 
@@ -517,8 +517,8 @@ export async function readAndDecryptFile(
  * Download dan dekripsi file FRDI secara streaming.
  * 
  * @param url URL file terenkripsi (misal: `/api/download-encrypt-file/xxx`)
- * @param passphrase Passphrase pengguna saat ini
- * @param userId ID pengguna saat ini (harus ada di encrypted_sym_keys)
+ * @param readerPrivateKey Passphrase pengguna saat ini
+ * @param readerUserId ID pengguna saat ini (harus ada di encrypted_sym_keys)
  * @returns Promise berisi stream plaintext + metadata
  * 
  * Alur:
@@ -530,11 +530,11 @@ export async function readAndDecryptFile(
  */
 export async function downloadAndDecryptFile(
   url: string,
-  passphrase: string,
-  userId: string
+  readerPrivateKey:Uint8Array,
+  readerUserId: string,
 ): Promise<DecryptedFileResult> {
   debugLog(`🚀 Memulai download & decrypt: ${url}`);
-  debugLog(`👤 User: ${userId}`);
+  debugLog(`👤 User: ${readerUserId}`);
 
   // --- STEP 0: Fetch sebagai stream
   const response = await fetch(url, {
@@ -564,8 +564,8 @@ export async function downloadAndDecryptFile(
   // ========== PIPELINE 2: Decrypt (setelah checksum valid)
   const decryptResult = await decryptStream(
     decryptBranch,
-    passphrase,
-    userId,
+    readerPrivateKey,
+    readerUserId,
     checksumResult
   );
 
@@ -927,15 +927,15 @@ export async function streamProgressivePdfRender(
 // 1. Untuk file kecil (PDF < 50 MB)
 export async function downloadAndOpenPdf(
   fileId: string,
-  passphrase: string,
-  userId: string
+  readerPrivateKey:Uint8Array,
+  readerUserId: string,
 ) {
   debugLog('🧪 Contoh: downloadAndOpenPdf() — pakai Blob');
   try {
     const { plaintextStream, meta } = await downloadAndDecryptFile(
       `/api/download-encrypt-file/${fileId}`,
-      passphrase,
-      userId
+      readerPrivateKey,
+      readerUserId,
     );
 
     debugLog(`📄 Membuka PDF: ${meta.original.filename}`);
@@ -948,15 +948,15 @@ export async function downloadAndOpenPdf(
 }
 export async function readAndOpenPdf(
   file: File,
-  passphrase: string,
-  userId: string
+  readerPrivateKey:Uint8Array,
+  readerUserId: string,
 ) {
   debugLog('🧪 Contoh: readAndOpenPdf() — pakai Blob');
   try {
     const { plaintextStream, meta } = await readAndDecryptFile(
       file,
-      passphrase,
-      userId
+      readerPrivateKey,
+      readerUserId,
     );
 
     debugLog(`📄 Membuka PDF: ${meta.original.filename}`);
@@ -970,15 +970,15 @@ export async function readAndOpenPdf(
 
 export async function printTextFile(
   fileId: string,
-  passphrase: string,
-  userId: string
+  readerPrivateKey:Uint8Array,
+  readerUserId: string,
 ) {
   debugLog('🧪 Contoh: printTextFile() — pakai text decoder');
   try {
     const { plaintextStream, meta } = await downloadAndDecryptFile(
       `/api/download-encrypt-file/${fileId}`,
-      passphrase,
-      userId
+      readerPrivateKey,
+      readerUserId,
     );
 
     debugLog(`📄 Membuka File: ${meta.original.filename}`);
@@ -991,15 +991,15 @@ export async function printTextFile(
 
 export async function downloadTextFile(
   fileId: string,
-  passphrase: string,
-  userId: string
+  readerPrivateKey:Uint8Array,
+  readerUserId: string,
 ) {
   debugLog('🧪 Contoh: downloadTextFile() — pakai Blob');
   try {
     const { plaintextStream, meta } = await downloadAndDecryptFile(
       `/api/download-encrypt-file/${fileId}`,
-      passphrase,
-      userId
+      readerPrivateKey,
+      readerUserId,
     );
 
     debugLog(`📄 Membuka File: ${meta.original.filename}`);
@@ -1020,16 +1020,16 @@ export async function downloadTextFile(
 // 2. Untuk file besar (PDF > 100 MB) — streaming ke canvas
 export async function renderPdfToCanvas(
   fileId: string,
-  passphrase: string,
-  userId: string,
+  readerPrivateKey:Uint8Array,
+  readerUserId: string,
   canvasId: string
 ) {
   debugLog('🧪 Contoh: renderPdfToCanvas() — streaming ke PDF.js');
   try {
     const { plaintextStream, meta } = await downloadAndDecryptFile(
       `/api/download-encrypt-file/${fileId}`,
-      passphrase,
-      userId
+      readerPrivateKey,
+      readerUserId,
     );
 
     const pdf = await streamPdfToPdfJs(plaintextStream, meta, (progress) => {
@@ -1057,14 +1057,14 @@ export async function renderPdfToCanvas(
 // Di dalam fungsi render atau event handler:
 export async function renderLargePdf(
   fileId: string,
-  passphrase: string,
-  userId: string,
+  readerPrivateKey:Uint8Array,
+  readerUserId: string,
   canvasId: string) {
   try {
     const { plaintextStream, meta } = await downloadAndDecryptFile(
       `/api/download-encrypt-file/${fileId}`,
-      passphrase,
-      userId
+      readerPrivateKey,
+      readerUserId
     );
 
     // ✅ TRUE STREAMING — 10 GB PDF tetap pakai ~1.5 MB RAM

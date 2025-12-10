@@ -4,6 +4,7 @@ namespace Dochub\Controller;
 
 use Dochub\Encryption\ChunkCombiner;
 use Dochub\Encryption\EncryptStatic;
+use Dochub\Encryption\Models\EncryptionKey;
 use Dochub\Upload\Cache\RedisCache;
 use Dochub\Upload\EnvironmentDetector;
 use Dochub\Workspace\Blob;
@@ -12,14 +13,61 @@ use Dochub\Workspace\Models\Manifest;
 use Dochub\Workspace\Services\BlobLocalStorage;
 use Dochub\Workspace\Services\ManifestLocalStorage;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class EncryptFileController
 {
-  public function viewer()
+  // digabung di upload untuk view nya
+  // public function viewer()
+  // {
+  //   return view('encrypt.encrypt');
+  // }
+
+  public function registrationView(Request $request)
   {
-    return view('encrypt.encrypt');
+    return view('vendor.workspace.encryption.keys.createKey');
+  }
+
+  public function registerPublicKey(Request $request)
+  {
+    $pKey = $request->public_key;
+    if($pKey) {
+      $encryptionKey = EncryptionKey::create([
+        'user_id' => $request->user()->id,
+        'public_key' => $pKey,
+      ]);
+      return response()->json([
+        "key" => [
+          'public_key' => $encryptionKey->public_key
+        ],
+      ]);
+    } else {
+      return response()->json([],404);
+    }
+  }
+
+  public function getPublicKey(Request $request)
+  {
+    $encryptionKey = EncryptionKey::where('user_id', $request->user()->id)->first();
+    if($encryptionKey){
+      return response()->json([
+        "key" => [
+          'public_key' => $encryptionKey->public_key
+        ],
+      ]);
+    } else {
+      return response()->json([],404);
+    }
+  }
+
+  public function getUser(Request $request){
+    return response()->json([
+      "user" => [
+        "email" => $request->user()->email,
+      ]
+    ],200);
   }
 
   public function putMetaJson(Request $request)

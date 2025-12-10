@@ -39,11 +39,16 @@ Route::prefix('dochub')->middleware([
 Route::prefix('encryption')->middleware([
   'throttle:100,1'
 ])->group(function(){
-  Route::get('/upload-encrypt', [EncryptFileController::class, 'viewer'])->middleware(['auth']);
-  Route::post('/upload-encrypt-start', [EncryptFileController::class, 'putMetaJson'])->middleware(['auth']);
-  Route::put('/upload-encrypt-chunk', [EncryptFileController::class, 'putChunk'])->middleware(['auth']);
-  Route::post('/upload-encrypt-process', [EncryptFileController::class, 'processChunks'])->middleware(['auth']);
-  Route::get('/download-encrypt-file/{fileId}', [EncryptFileController::class, 'stream'])->middleware(['auth']);
+  // Route::get('/upload-encrypt', [EncryptFileController::class, 'viewer'])->middleware(['web','auth']);
+  Route::post('/upload-encrypt-start', [EncryptFileController::class, 'putMetaJson'])->middleware(['web','auth']);
+  Route::put('/upload-encrypt-chunk', [EncryptFileController::class, 'putChunk'])->middleware(['web','auth']);
+  Route::post('/upload-encrypt-process', [EncryptFileController::class, 'processChunks'])->middleware(['web','auth']);
+  Route::get('/download-encrypt-file/{fileId}', [EncryptFileController::class, 'stream'])->middleware(['web','auth']);
+  // key
+  Route::get('/get/user', [EncryptFileController::class, 'getUser'])->middleware(['web','auth']);
+  Route::get('/get/public-key', [EncryptFileController::class, 'getPublicKey'])->middleware(['web','auth']);
+  Route::get('/register/public-key', [EncryptFileController::class, 'registrationView'])->middleware(['web', 'auth']);
+  Route::post('/register/public-key', [EncryptFileController::class, 'registerPublicKey'])->middleware(['web','auth']);
 });
 
 // Tus routes (already exists)
