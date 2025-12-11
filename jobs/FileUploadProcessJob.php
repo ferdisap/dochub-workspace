@@ -8,6 +8,7 @@ use Dochub\Upload\Services\CacheCleanup;
 use Dochub\Workspace\Blob;
 use Dochub\Workspace\Enums\ManifestSourceType;
 use Dochub\Workspace\Manifest as WorkspaceManifest;
+use Dochub\Workspace\Models\File;
 use Dochub\Workspace\Models\Manifest;
 use Dochub\Workspace\Services\BlobLocalStorage as BlobStorage;
 use Dochub\Workspace\Services\ManifestSourceParser;
@@ -23,6 +24,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\Events\JobQueued;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use TusPhp\Cache\Cacheable;
 
 // jenis jenis status
@@ -45,6 +47,8 @@ class FileUploadProcessJob implements ShouldQueue
 
   public string $metadata; // string json
   public int $userId;
+
+  protected string $prefixPath = "upload";
   /**
    * Create a new job instance.
    */
@@ -77,6 +81,11 @@ class FileUploadProcessJob implements ShouldQueue
       $job->cache->set($job->uploadId, $data);
     });
     return $job;
+  }
+
+  public function changePrefix(string $prefix)
+  {
+    $this->prefixPath = $prefix;
   }
 
   public function mergeChunks($totalChunk, $uploadDir, $fileName)
@@ -175,7 +184,22 @@ class FileUploadProcessJob implements ShouldQueue
     rmdir($dir);
   }
 
-    /**
+  public function storeFileFromBlob(string $hash, string $relativePath, int $filesize, int $mtime)
+  {
+    File::updateOrCreate([
+      'workspace_id' => 0, // zero is nothing. Bisa saja untuk worksapce default
+      'merge_id' => 0, // walau uuid bisa disi 0
+      // 'merge_id' => Str::uuid(),
+      'relative_path' => "upload/{$relativePath}",
+      'blob_hash' => $hash,
+      //'old_blob_hash', // nullable
+      'action' => 'upload',
+      'size_bytes' => $filesize,
+      'file_modified_at' => $mtime
+    ]);
+  }
+
+  /**
    * Proses file ke blob storage
    */
   public function processFilesToBlobs(array $files, array &$result, bool $unlinkIfSuccess = true): WorkspaceManifest
@@ -183,10 +207,14 @@ class FileUploadProcessJob implements ShouldQueue
     $blob = new Blob();
     $totalprocessed = 0;
     $source = ManifestSourceParser::makeSource(ManifestSourceType::UPLOAD->value, "user-{$this->userId}");
-    return $blob->store($this->userId, $source, $files, 
-      function (string $hash, string $relativePath, string $absolutePath, ?\Exception $e, int $processed, int $total) use (&$totalprocessed, $unlinkIfSuccess) {
+    return $blob->store(
+      $this->userId,
+      $source,
+      $files,
+      function (string $hash, string $relativePath, string $absolutePath, int $filesize, int $mtime, ?\Exception $e, int $processed, int $total) use (&$totalprocessed, $unlinkIfSuccess) {
         if ($hash || ($e === null)) {
           if ($unlinkIfSuccess) @unlink($absolutePath);
+          $this->storeFileFromBlob($hash, $relativePath, $filesize, $mtime);
           if ($processed % 10 === 0 || $processed === $total) {
             $progress = round(($processed / $total) * 100);
             $this->updateStatus('processing', $progress, [
@@ -216,7 +244,7 @@ class FileUploadProcessJob implements ShouldQueue
   public function handle()
   {
     $this->cache = new NativeCache();
-    
+
     $metadata = json_decode($this->metadata, true);
     $fileName = $metadata['file_name'];
     $uploadDir = $metadata['upload_dir'];

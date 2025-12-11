@@ -5,6 +5,7 @@ namespace Dochub\Workspace;
 use Dochub\Workspace\Enums\ManifestSource;
 use Dochub\Workspace\Services\BlobLocalStorage;
 use Dochub\Workspace\Services\ManifestVersionParser;
+use Exception;
 use Illuminate\Support\Facades\Config;
 
 use function Illuminate\Support\now;
@@ -49,15 +50,21 @@ class Blob
           $result['errors'][] = "Skipped dangerous file: {$relativePath}";
           continue;
         }
-        $hash = $this->blobStorage->store($filePath);
-        $processed++;
-  
-        $filesize = filesize($filePath);
-        $total_size_bytes += $filesize;
-
-        $wsFiles[] = new File($relativePath, $hash, $filesize, filemtime($filePath));
         
-        $callback($hash, $relativePath, $filePath, null, $processed, $total_files);
+        $filesize = filesize($filePath);
+        $mtime = filemtime($filePath);
+
+        if($filePath && $mtime){
+          $hash = $this->blobStorage->store($filePath);
+          $processed++;
+  
+          $total_size_bytes += $filesize;
+          $wsFiles[] = new File($relativePath, $hash, $filesize, $mtime);
+          
+          $callback($hash, $relativePath, $filePath, $filesize, $mtime, null, $processed, $total_files);
+        } else {
+          throw new Exception('Failed to save blob');
+        }
       } catch (\Exception $e) {
         throw $e;
         // $callback('', $relativePath, $filePath, $e, $processed, $total_files);

@@ -10,8 +10,9 @@ Route::prefix('dochub')->middleware([
   'web',
   'throttle:100,1' // 100 chunk/menit
 ])->group(function () {
-  Route::get('/upload', [UploadController::class, 'form'])->middleware('auth');
+  Route::get('/upload', [UploadController::class, 'formView'])->middleware('auth');
   // tambahkan ->middleware('throttle:100,1'); // 100 chunk/menit
+  Route::get('/upload/list', [UploadController::class, 'listView'])->middleware('auth');
   Route::get('/upload/config', [UploadController::class, 'getConfig'])->middleware('auth')->name('dochub.upload.config');
   Route::post('/upload/check', [UploadNativeController::class, 'checkUpload'])->middleware('auth')->name('dochub.upload.check');
   Route::post('/upload/chunk', [UploadNativeController::class, 'uploadChunk'])->middleware('auth')->name('dochub.upload.chunk.check');

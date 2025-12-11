@@ -501,7 +501,8 @@ class BlobLocalStorage
       // 'mime_type' => $mime,
       // 'is_already_compressed' => $isAlreadyCompressed,
     ]);
-    BlobModel::create($data);
+    // BlobModel::create($data);
+    BlobModel::updateOrCreate($data);
     // try {} 
     // catch (\Throwable $th) {
     // dd($isBinary, $isAlreadyCompressed, $metadata, $th);
@@ -580,6 +581,11 @@ class BlobLocalStorage
     $handle = fopen($path, 'rb');
     $sample = fread($handle, 1024); // baca 1 KB pertama
     fclose($handle);
+    
+    // jika tidak ada isinya dianggap binary file true
+    if(!$sample){
+      return true;
+    }
 
     // Cek null byte (indikator kuat binary)
     if (strpos($sample, "\x00") !== false) {

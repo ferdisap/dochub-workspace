@@ -101,7 +101,7 @@ return new class extends Migration
       $table->index('old_blob_hash');
       $table->timestamps();
 
-      $table->foreign('merge_id')->references('id')->on('dochub_merges')->onDelete('cascade');
+      // $table->foreign('merge_id')->references('id')->on('dochub_merges')->onDelete('cascade');
       $table->foreign('blob_hash')->references('hash')->on('dochub_blobs')->onDelete('restrict');
       $table->foreign('old_blob_hash')->references('hash')->on('dochub_blobs')->onDelete('set null');
     });

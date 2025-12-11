@@ -7,7 +7,7 @@
 		deriveX25519KeyPair,
 	} from "../ferdi-encryption";
 	import { clearDB, erase, eraseKEK, readLocal, storeLocal } from "./localStoreKey";
-import { fetchPublicKey, getPrivateKey } from "./key";
+  import { fetchPublicKey, getPrivateKey } from "./key";
 
 	const userId = ref(null);
 	const passphrase = ref<string>("");

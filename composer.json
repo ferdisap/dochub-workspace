@@ -7,6 +7,7 @@
       "Dochub\\Upload\\": "src/upload",
       "Dochub\\Encryption\\": "src/encryption",
       "Dochub\\Controller\\": "controllers/",
+      "Dochub\\Middleware\\": "middlewares/",
       "Dochub\\Job\\": "jobs/"
     }
   },

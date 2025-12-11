@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+.btn-sm {
+  @apply py-1 px-2 text-xs text-white rounded transition;
+}
+.btn-sm.blue{
+  @apply bg-blue-600 hover:bg-blue-700;
+}
+.btn-sm.red{
+  @apply bg-red-600 hover:bg-red-700;
+}
+.btn-sm.green{
+  @apply bg-green-600 hover:bg-green-700;
+}

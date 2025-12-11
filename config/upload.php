@@ -33,6 +33,7 @@ return [
   'strategy' => [
     'shared' => 'native',
     'serverless' => 'native',
+    'development' => 'native',
     'container' => 'native', // tus, tapi belum siap
     'dedicated' => 'native', // tus, tapi belum siap
   ],

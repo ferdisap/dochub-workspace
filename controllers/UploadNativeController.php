@@ -39,7 +39,7 @@ class UploadNativeController extends UploadController
     $uploadId = $request->header('X-Upload-ID');
     $chunkId = $request->header('X-Chunk-ID');
 
-    if($this->isChunkHasUploaded($uploadId, $chunkId)){
+    if ($this->isChunkHasUploaded($uploadId, $chunkId)) {
       return response(null, 304);
     } else {
       return response(null, 404);
@@ -81,14 +81,14 @@ class UploadNativeController extends UploadController
     $unique = uniqid();
     $chunkPathTmp = "{$uploadDir}/{$fileName}.part{$chunkIndex}_{$unique}.tmp";
     $success = $this->streamToDisk($chunkPathTmp);
-    
+
     if (!$success) {
       return response()->json(['error' => 'Failed to save chunk'], 500);
     }
 
     // change to final path
     $chunkPath = "{$uploadDir}/{$fileName}.part{$chunkIndex}";
-    if($success) rename($chunkPathTmp, $chunkPath);
+    if ($success) rename($chunkPathTmp, $chunkPath);
 
     $this->updateUploadMetadata($uploadId, $chunkId, [
       'upload_id' => $uploadId,
@@ -131,9 +131,9 @@ class UploadNativeController extends UploadController
     if (count($data) < 1) {
       return response()->json(['error' => 'Upload not found'], 404);
     }
-    
+
     // validasi apakah chunk sudah selesai di upload semua
-    if(!$this->check_progress($data)){
+    if (!$this->check_progress($data)) {
       return response()->json(['error' => 'Chunk is not completely uploaded'], 422); // uncompressable content
     }
 
@@ -144,16 +144,33 @@ class UploadNativeController extends UploadController
     $driverUpload = config('upload.driver') === 'tus' ? 'tus' : 'native'; // walau auto adalah file
     $uploadDir = config("upload.driver.{$driverUpload}.root") . "/{$uploadId}";
     $data['upload_dir'] = $uploadDir;
-    
+
     // Update metadata
     $data['job_id'] = 0;
     $data['status'] = 'processing';
 
+    // $filePath = $data['upload_dir'] . "/" . $data['file_name']; // sama seperti di FileUploadProcessJob.php
+    $filesize = (int) $data["file_size"];
+    // jika lebih dari 1 mb maka pakai worker
+    if ($filesize > (1 * 1024 * 1024)) {
+      $job = FileUploadProcessJob::withId(json_encode($data), Auth::user()->id); // file di upload dengan namepsace "upload/{$subpath}", bukan "workspace" di File model
+      dispatch($job)->onQueue('uploads');
+      $jobId = $job->id;
+    } else {
+      // ZipProcessJob::dispatchSync(json_encode($data), Auth::user()->id);
+      FileUploadProcessJob::dispatchSync(json_encode($data), Auth::user()->id);
+      // set job id to metadata
+      $data = $this->cache->getArray($uploadId);
+      $data["job_id"] = 0;
+      // save metadata to cache
+      $this->cache->set($uploadId, $data);
+    }
+
     // Dispatch job untuk prodcution
     // $job = ZipProcessJob::withId(json_encode($data), Auth::user()->id);
-    $job = FileUploadProcessJob::withId(json_encode($data), Auth::user()->id);
-    dispatch($job)->onQueue('uploads');
-    $jobId = $job->id;
+    // $job = FileUploadProcessJob::withId(json_encode($data), Auth::user()->id); // file di upload dengan namepsace "upload/{$subpath}", bukan "workspace" di File model
+    // dispatch($job)->onQueue('uploads');
+    // $jobId = $job->id;
     // untuk debug
     // try {
     //   // ZipProcessJob::dispatchSync(json_encode($data), Auth::user()->id);
@@ -176,7 +193,8 @@ class UploadNativeController extends UploadController
     ]);
   }
 
-  public function tesCheckChunk(Request $request, string $uploadId, string $chunkId){
+  public function tesCheckChunk(Request $request, string $uploadId, string $chunkId)
+  {
     $metadata = $this->cache->getArray($uploadId);
     dd($metadata, $this->cache->driver());
     dd($id, $chunkId);
@@ -203,7 +221,7 @@ class UploadNativeController extends UploadController
     // dd($job, $job->getJob()->id);
   }
 
-  private function check_progress(array $metadata) :bool
+  private function check_progress(array $metadata): bool
   {
     return ($metadata['total_chunks'] ? ($metadata['uploaded_chunks'] ?? 0) / $metadata['total_chunks'] : 0) >= 1.0;
   }
@@ -226,7 +244,7 @@ class UploadNativeController extends UploadController
       return response()->json(['error' => 'Upload not found'], 404);
     }
 
-    if(!$this->check_progress($data)){
+    if (!$this->check_progress($data)) {
       return response()->json(['error' => 'Chunk is not completely uploaded'], 422); // uncompressable content
     }
 
@@ -268,7 +286,7 @@ class UploadNativeController extends UploadController
   //   return in_array($header, ["PK\x03\x04", "PK\x05\x06", "PK\x07\x08"], true);
   // }
 
-  private function isChunkHasUploaded(string $uploadId, $chunkId) :bool
+  private function isChunkHasUploaded(string $uploadId, $chunkId): bool
   {
     $metadata = $this->cache->getArray($uploadId);
     return ((isset($metadata['chunks_id']) && in_array($chunkId, $metadata['chunks_id'])));
@@ -285,7 +303,7 @@ class UploadNativeController extends UploadController
 
     // set chunk
     $metadata['chunks_id'] = isset($metadata['chunks_id']) ? $metadata['chunks_id'] : [];
-    if(!in_array($chunkId, $metadata['chunks_id'])) {
+    if (!in_array($chunkId, $metadata['chunks_id'])) {
       $metadata['chunks_id'][] = $chunkId;
       $uploadedChunk = 1;
     }
@@ -366,7 +384,7 @@ class UploadNativeController extends UploadController
     }
     // check chunkId
     $chunkId = $request->header('X-Chunk-Id');
-    if($chunkId === 'null' || $chunkId === '0' || $chunkId === '' || !$chunkId){
+    if ($chunkId === 'null' || $chunkId === '0' || $chunkId === '' || !$chunkId) {
       throw new \InvalidArgumentException('Chunk id must be provided');
     }
 

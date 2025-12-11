@@ -7,12 +7,16 @@ use Illuminate\Foundation\Auth\User;
 
 class EncryptionKey extends Model
 {
-  protected $table = 'encryption_keys';
+  protected $table = 'dochub_encryption_keys';
 
   protected $fillable = [
     'user_id',
     'public_key',
   ];
+
+  protected $casts = [
+    'public_key' => 'encrypted',
+];
 
   // Relasi
   public function user()

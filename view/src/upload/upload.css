@@ -29,7 +29,7 @@
 	justify-content: center;
 }
 
-.env-shared {
+.env-shared, .env-serverless, .env-dedicated, .env-development {
 	background: #fff3cd;
 	border-left: 4px solid #ffc107;
 }
@@ -63,6 +63,8 @@
 	display: flex;
 	justify-content: center;
 	width: 100%;
+  padding-bottom: 1rem;
+  border-bottom: 2px dashed #ccc;
 }
 
 .upload-zone .svg {

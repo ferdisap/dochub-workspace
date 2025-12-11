@@ -9,7 +9,7 @@ return new class extends Migration
   public function up()
   {
     // Workspace
-    Schema::create('encryption_keys', function (Blueprint $table) {
+    Schema::create('dochub_encryption_keys', function (Blueprint $table) {
       $table->id();
       $table->foreignId('user_id'); //->constrained('users');
       $table->string('public_key'); // base64 string
@@ -19,6 +19,6 @@ return new class extends Migration
 
   public function down()
   {
-    Schema::dropIfExists('encryption_keys');
+    Schema::dropIfExists('dochub_encryption_keys');
   }
 };

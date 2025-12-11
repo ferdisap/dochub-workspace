@@ -33,6 +33,7 @@ class EncryptFileController
 
   public function registerPublicKey(Request $request)
   {
+    // $encrypted = Crypt::encryptString($token); // nanti disimpan dengan encrypsi jika tidak di set $cast di model
     $pKey = $request->public_key;
     if ($pKey) {
       $encryptionKey = EncryptionKey::create([
@@ -51,6 +52,7 @@ class EncryptFileController
 
   public function getPublicKey(Request $request)
   {
+    // $token = Crypt::decryptString($encrypted); // nanti disimpan dengan encrypsi jika tidak di set $cast di model
     $queryMail = $request->q_mail;
     $encryptionKey = null;
     if(!$queryMail){

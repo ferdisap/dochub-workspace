@@ -6,7 +6,7 @@ use Dochub\Controller\WorkspaceRollbackController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('dochub')->middleware([
-  'web',
+  'web', // diubah jika authentication pakai web
   'throttle:100,1' // 100 chunk/menit
 ])->group(function () {
   // CREATE Eksekusi new

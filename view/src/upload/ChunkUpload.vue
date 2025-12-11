@@ -10,14 +10,19 @@ import {
     ProgressData,
     UploadedData,
 } from "./ChunkUploadManager";
-import EncryptDecrypt from "./encryption/EncryptDecrypt.vue";
+import EncryptDecrypt from "../encryption/EncryptDecrypt.vue";
 
 const environment = ref("detecting...");
-const envClass = computed(() => ({
-    "env-shared": environment.value === "shared",
-    "env-dedicated": environment.value === "dedicated",
-    "env-container": environment.value === "container",
-}));
+const envClass = computed(() => {
+  switch (environment.value) {
+    case "shared": return "env-shared"; 
+    case "serverless": return "env-serverless";
+    case "dedicated": return "env-dedicated";
+    case "container": return "env-container";
+    case "development": return "env-development";
+    default: return "env-development";
+}
+});
 
 const fileInput = ref<HTMLInputElement | null>(null);
 const strategy = ref<string>("auto");

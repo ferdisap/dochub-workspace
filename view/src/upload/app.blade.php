@@ -17,7 +17,7 @@
 
     <!-- Styles / Scripts -->
     @if (file_exists(public_path('vendor/workspace/assets/manifest.json')) || file_exists(public_path('hot')))
-        @vite(['resources/views/vendor/workspace/upload.ts'])
+        @vite(['resources/views/vendor/workspace/upload/upload.ts'])
     @else
         <link href="/vendor/workspace/assets/upload.css" rel="stylesheet" />
         <script src="/vendor/workspace/assets/upload.js" type="module"></script>
@@ -1541,15 +1541,6 @@
       </div>
       <div class="card-body">
           <div id="status-content"></div>
-      </div>
-  </div>
-  <!-- Encrypt Section -->
-  <div class="card">
-      <div class="card-header">
-          <h2 class="title">Encryption Section</h2>
-          <p>Encrypting files end-to-end.</p>
-      </div>
-      <div class="card-body" id="encrypt-app">
       </div>
   </div>
 </body>

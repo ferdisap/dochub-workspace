@@ -14,8 +14,14 @@ use Illuminate\Http\Request;
 
 class UploadController
 {
-  public function form(Request $request){
-    return view('vendor.workspace.upload', [
+  public function formView(Request $request){
+    return view('vendor.workspace.upload.app', [
+      'user' => $request->user()
+    ]);
+  }
+
+  public function listView(Request $request){
+    return view('vendor.workspace.upload.list.app', [
       'user' => $request->user()
     ]);
   }
