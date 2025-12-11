@@ -268,6 +268,61 @@ export interface ChecksumResult {
 }
 
 // ========== FUNGSI UTAMA: DOWNLOAD & DECRYPT (multi-chunk)
+// ========== STREAMING SAVE (RAM-EFFICIENT) ==========
+async function savePlaintextStream(
+  stream: ReadableStream<Uint8Array>,
+  filename: string,
+  mimeType: string
+): Promise<void> {
+  // Gunakan showSaveFilePicker jika tersedia (true streaming write)
+  if ('showSaveFilePicker' in window) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{
+          description: 'File Asli',
+          accept: { [mimeType]: [''] }
+        }]
+      });
+
+      const writable = await handle.createWritable();
+      const writer = writable.getWriter();
+
+      // Streaming write — tanpa buffer penuh
+      const reader = stream.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          await writer.write(value);
+        }
+        await writer.close();
+      } finally {
+        reader.releaseLock();
+      }
+
+      return;
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') throw err;
+      console.warn('⚠️ showSaveFilePicker failed, fallback to Blob download:', err);
+    }
+  } else {
+    throw new Error('❌ Browser tidak suppor showSaveFilePicker');
+  }
+
+  // Fallback: kumpulkan ke Blob (hanya untuk file kecil < ~500 MB)
+  debugLog('⏳ Fallback ke Blob download (file kecil)...');
+  const blob = await streamToBlob(stream, mimeType);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 // --- Pipeline 1: Checksum
 async function computeGlobalChecksum(
@@ -474,7 +529,7 @@ async function decryptStream(
  */
 export async function readAndDecryptFile(
   file: File,
-  readerPrivateKey:Uint8Array,
+  readerPrivateKey: Uint8Array,
   readerUserId: string,
 ): Promise<DecryptedFileResult> {
   debugLog(`🚀 Memulai baca & decrypt file lokal: ${file.name}`);
@@ -516,7 +571,7 @@ export async function readAndDecryptFile(
 /**
  * Download dan dekripsi file FRDI secara streaming.
  * 
- * @param url URL file terenkripsi (misal: `/api/download-encrypt-file/xxx`)
+ * @param url URL file terenkripsi (misal: `/dochub/encryption/download-file/xxx`)
  * @param readerPrivateKey Passphrase pengguna saat ini
  * @param readerUserId ID pengguna saat ini (harus ada di encrypted_sym_keys)
  * @returns Promise berisi stream plaintext + metadata
@@ -530,7 +585,7 @@ export async function readAndDecryptFile(
  */
 export async function downloadAndDecryptFile(
   url: string,
-  readerPrivateKey:Uint8Array,
+  readerPrivateKey: Uint8Array,
   readerUserId: string,
 ): Promise<DecryptedFileResult> {
   debugLog(`🚀 Memulai download & decrypt: ${url}`);
@@ -927,13 +982,13 @@ export async function streamProgressivePdfRender(
 // 1. Untuk file kecil (PDF < 50 MB)
 export async function downloadAndOpenPdf(
   fileId: string,
-  readerPrivateKey:Uint8Array,
+  readerPrivateKey: Uint8Array,
   readerUserId: string,
 ) {
   debugLog('🧪 Contoh: downloadAndOpenPdf() — pakai Blob');
   try {
     const { plaintextStream, meta } = await downloadAndDecryptFile(
-      `/api/download-encrypt-file/${fileId}`,
+      `/dochub/encryption/download-file/${fileId}`,
       readerPrivateKey,
       readerUserId,
     );
@@ -948,7 +1003,7 @@ export async function downloadAndOpenPdf(
 }
 export async function readAndOpenPdf(
   file: File,
-  readerPrivateKey:Uint8Array,
+  readerPrivateKey: Uint8Array,
   readerUserId: string,
 ) {
   debugLog('🧪 Contoh: readAndOpenPdf() — pakai Blob');
@@ -968,15 +1023,70 @@ export async function readAndOpenPdf(
   }
 }
 
+export async function decryptAndSaveFile(
+  file: File,
+  readerPrivateKey: Uint8Array,
+  readerUserId: string,
+) {
+  try {
+    const { plaintextStream, meta } = await readAndDecryptFile(
+      file,
+      readerPrivateKey,
+      readerUserId,
+    );
+
+    const { original } = meta;
+    const suggestedName = original.filename || 'decrypted_file';
+    const mimeType = original.mime || 'application/octet-stream';
+
+    // === 5. Simpan hasil dekripsi ke disk
+    await savePlaintextStream(plaintextStream, suggestedName, mimeType);
+    debugLog(`✅ File berhasil didekripsi dan disimpan: ${suggestedName}`);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      debugLog('ℹ️ Pengguna membatalkan penyimpanan.');
+      return;
+    }
+
+    // fallback kalau tidak support window.showSaveFilePicker
+    try {
+      debugLog('⏳ Fallback ke Blob download (file kecil)...');
+      const { plaintextStream, meta } = await readAndDecryptFile(
+        file,
+        readerPrivateKey,
+        readerUserId,
+      );
+      const { original } = meta;
+      const suggestedName = original.filename || 'decrypted_file';
+      const mimeType = original.mime || 'application/octet-stream';
+
+      const blob = await streamToBlob(plaintextStream, mimeType);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = suggestedName;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch(err) {
+      console.error('❌ Gagal dekripsi:', err);
+      throw err;
+    }
+
+  }
+}
+
 export async function printTextFile(
   fileId: string,
-  readerPrivateKey:Uint8Array,
+  readerPrivateKey: Uint8Array,
   readerUserId: string,
 ) {
   debugLog('🧪 Contoh: printTextFile() — pakai text decoder');
   try {
     const { plaintextStream, meta } = await downloadAndDecryptFile(
-      `/api/download-encrypt-file/${fileId}`,
+      `/dochub/encryption/download-file/${fileId}`,
       readerPrivateKey,
       readerUserId,
     );
@@ -991,13 +1101,13 @@ export async function printTextFile(
 
 export async function downloadTextFile(
   fileId: string,
-  readerPrivateKey:Uint8Array,
+  readerPrivateKey: Uint8Array,
   readerUserId: string,
 ) {
   debugLog('🧪 Contoh: downloadTextFile() — pakai Blob');
   try {
     const { plaintextStream, meta } = await downloadAndDecryptFile(
-      `/api/download-encrypt-file/${fileId}`,
+      `/dochub/encryption/download-file/${fileId}`,
       readerPrivateKey,
       readerUserId,
     );
@@ -1020,14 +1130,14 @@ export async function downloadTextFile(
 // 2. Untuk file besar (PDF > 100 MB) — streaming ke canvas
 export async function renderPdfToCanvas(
   fileId: string,
-  readerPrivateKey:Uint8Array,
+  readerPrivateKey: Uint8Array,
   readerUserId: string,
   canvasId: string
 ) {
   debugLog('🧪 Contoh: renderPdfToCanvas() — streaming ke PDF.js');
   try {
     const { plaintextStream, meta } = await downloadAndDecryptFile(
-      `/api/download-encrypt-file/${fileId}`,
+      `/dochub/encryption/download-file/${fileId}`,
       readerPrivateKey,
       readerUserId,
     );
@@ -1057,12 +1167,12 @@ export async function renderPdfToCanvas(
 // Di dalam fungsi render atau event handler:
 export async function renderLargePdf(
   fileId: string,
-  readerPrivateKey:Uint8Array,
+  readerPrivateKey: Uint8Array,
   readerUserId: string,
   canvasId: string) {
   try {
     const { plaintextStream, meta } = await downloadAndDecryptFile(
-      `/api/download-encrypt-file/${fileId}`,
+      `/dochub/encryption/download-file/${fileId}`,
       readerPrivateKey,
       readerUserId
     );

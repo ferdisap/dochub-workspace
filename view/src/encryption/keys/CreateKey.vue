@@ -7,6 +7,7 @@
 		deriveX25519KeyPair,
 	} from "../ferdi-encryption";
 	import { clearDB, erase, eraseKEK, readLocal, storeLocal } from "./localStoreKey";
+import { fetchPublicKey, getPrivateKey } from "./key";
 
 	const userId = ref(null);
 	const passphrase = ref<string>("");
@@ -36,7 +37,7 @@
 		} catch (e) {
 			if (!userId.value) {
 				try {
-					await fetch("/encryption/get/user").then(async (response) => {
+					await fetch("/dochub/encryption/get/user").then(async (response) => {
 						const data = await response.json();
 						userId.value = data.user.email;
 					});
@@ -82,7 +83,7 @@
 	async function storeServerPublicKey() {
 		success.value = "";
 		loading.value = true;
-		const response = await fetch("/encryption/register/public-key", {
+		const response = await fetch("/dochub/encryption/register/public-key", {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -104,13 +105,7 @@
 	async function readServerPublicKey(): Promise<string | undefined> {
 		success.value = "";
 		loading.value = true;
-		const response = await fetch("/encryption/get/public-key", {
-			method: "GET",
-			headers: { 
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-      },
-		});
+		const response = await fetchPublicKey();
 		let pbKey64 = undefined;
 		if (response.ok) {
 			const data = await response.json();
@@ -134,7 +129,7 @@
 	}
 
 	async function readLocalPrivateKey() {
-		const pKey = await readLocal();
+		const pKey = await getPrivateKey();
 		privateKey.value = bytesToBase64(pKey);
 		return pKey;
 	}

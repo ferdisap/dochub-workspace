@@ -12,6 +12,7 @@ use Dochub\Workspace\Models\Blob as ModelsBlob;
 use Dochub\Workspace\Models\Manifest;
 use Dochub\Workspace\Services\BlobLocalStorage;
 use Dochub\Workspace\Services\ManifestLocalStorage;
+use Illuminate\Foundation\Auth\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -33,7 +34,7 @@ class EncryptFileController
   public function registerPublicKey(Request $request)
   {
     $pKey = $request->public_key;
-    if($pKey) {
+    if ($pKey) {
       $encryptionKey = EncryptionKey::create([
         'user_id' => $request->user()->id,
         'public_key' => $pKey,
@@ -44,30 +45,52 @@ class EncryptFileController
         ],
       ]);
     } else {
-      return response()->json([],404);
+      return response()->json([], 404);
     }
   }
 
   public function getPublicKey(Request $request)
   {
-    $encryptionKey = EncryptionKey::where('user_id', $request->user()->id)->first();
-    if($encryptionKey){
+    $queryMail = $request->q_mail;
+    $encryptionKey = null;
+    if(!$queryMail){
+      $encryptionKey = EncryptionKey::where('user_id', $request->user()->id)->first();
+    } else {
+      $user = User::where('email', $queryMail)->first(['id']);
+      $encryptionKey = EncryptionKey::where('user_id', $user->id)->first();
+    }
+
+    if ($encryptionKey) {
       return response()->json([
         "key" => [
           'public_key' => $encryptionKey->public_key
         ],
       ]);
     } else {
-      return response()->json([],404);
+      return response()->json([], 404);
     }
   }
 
-  public function getUser(Request $request){
+  public function getUser(Request $request)
+  {
     return response()->json([
       "user" => [
         "email" => $request->user()->email,
       ]
-    ],200);
+    ], 200);
+  }
+
+  public function getUsers(Request $request)
+  {
+    $queryMail = $request->q_mail;
+    $users = User::where('email', 'LIKE', '%' . $queryMail . '%')->limit(5)->get(['id','name','email']);
+    $users->map(function($user){
+      $user->setHidden(['id']);
+      $user->encryption_key = EncryptionKey::where('user_id', $user->id)->first(['public_key', 'created_at']);
+    });
+    return response()->json([
+      "users" => $users, // only email, nami, encryption_key [public_key]
+    ], 200);
   }
 
   public function putMetaJson(Request $request)

@@ -150,8 +150,8 @@ class UploadNativeController extends UploadController
     $data['status'] = 'processing';
 
     // Dispatch job untuk prodcution
-    $job = ZipProcessJob::withId(json_encode($data), Auth::user()->id);
-    // $job = FileUploadProcessJob::withId(json_encode($data), Auth::user()->id);
+    // $job = ZipProcessJob::withId(json_encode($data), Auth::user()->id);
+    $job = FileUploadProcessJob::withId(json_encode($data), Auth::user()->id);
     dispatch($job)->onQueue('uploads');
     $jobId = $job->id;
     // untuk debug

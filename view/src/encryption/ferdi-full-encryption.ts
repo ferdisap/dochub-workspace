@@ -117,7 +117,7 @@ async function saveStreaming(
 
   if (useFilePicker) {
     const handle = await window.showSaveFilePicker({
-      suggestedName: filename,
+      suggestedName: 'encryipted_' + filename + '.fnc',
       types: [{ description: 'Encryption', accept: { 'application/octet-stream': ['.fnc'] } }],
     });
     const writable = await handle.createWritable();
@@ -268,7 +268,7 @@ export async function encryptAndSaveFile(
 
   // --- 5. Stream save ---
   const useFilePicker = 'showSaveFilePicker' in window;
-  const filename = `${file.name}.fnc`;
+  const filename = `${file.name}`;
 
   try {
     await saveStreaming(

@@ -9,10 +9,17 @@ use Dochub\Workspace\Models\Blob as ModelsBlob;
 use Dochub\Workspace\Models\Manifest;
 use Dochub\Workspace\Services\BlobLocalStorage;
 use Dochub\Workspace\Services\ManifestLocalStorage;
+use Illuminate\Container\Attributes\Auth;
 use Illuminate\Http\Request;
 
 class UploadController
 {
+  public function form(Request $request){
+    return view('vendor.workspace.upload', [
+      'user' => $request->user()
+    ]);
+  }
+
   /**
    * Get upload configuration
    */

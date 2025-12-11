@@ -1,117 +1,3 @@
-<template>
-    <div class="upload-manager">
-        <!-- Status Environment -->
-        <div class="env-badge" :class="envClass">
-            <span>Environment: {{ environment }}</span>
-            <span>Strategy: {{ strategy }}</span>
-        </div>
-
-        <!-- Upload Zone -->
-        <div
-            class="upload-zone"
-            @dragover.prevent
-            @drop.prevent="handleDrop"
-        >
-            <div v-if="!uploading" class="file">
-              <div class="svg" title="browse"
-                @click="openFilePicker">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="48"
-                    height="48"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                >
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="17 8 12 3 7 8"></polyline>
-                    <line x1="12" y1="3" x2="12" y2="15"></line>
-                </svg>
-              </div>
-              <div class="info">
-                <p>Drag & drop ZIP file here</p>
-                <p class="hint">or click to browse</p>
-                <p class="limits">Max: {{ formatBytes(maxSize) }}</p>
-                <p class="browse-info">{{ browseInfo }}</p>
-              </div>
-              <div class="svg" title="upload" @click.stop="submitUpload">
-                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send-icon lucide-send"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></svg>
-              </div>
-            </div>
-
-            <!-- Progress -->
-            <div v-else class="progress-container">
-                <div class="progress-bar">
-                    <div
-                        class="progress-fill"
-                        :style="{ width: `${progress}%` }"
-                    ></div>
-                </div>
-                <div class="progress-info">
-                    <div class="progress-percent-speed">
-                      <span class="progress-percent">{{ progress }}%</span>&#160;<span class="progress-speed" v-if="speed">{{ formatBytes(speed) }}/s</span>
-                    </div>
-                    <button @click.stop="pauseResume" :class="['control-btn', isPaused ? 'resume' : 'pause']">
-                        {{ isPaused ? "Resume" : "Pause" }}
-                    </button>
-                    <button @click.stop="cancel" class="control-btn cancel">
-                        Cancel
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Results -->
-        <div v-if="result" class="result" :class="result.type">
-            <div class="result-icon">
-                <svg
-                    v-if="result.type === 'completed'"
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                >
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-                <svg
-                    v-else
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                >
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="8" x2="12" y2="12"></line>
-                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                </svg>
-            </div>
-            <div class="result-content">
-                <h3>{{ result.title }}</h3>
-                <p>{{ result.message }}</p>
-                <div v-if="result.jobId" class="job-info">
-                    <span>Job ID: {{ result.jobId }}</span>
-                    <button @click="checkStatus" class="btn-sm">
-                        Check Status
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Hidden file input -->
-        <input
-            type="file"
-            ref="fileInput"
-            @change="handleFileSelect($event as InputEvent)"
-            accept=".zip,.tar,.gz"
-            class="hidden"
-        />
-    </div>
-</template>
-
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import {
@@ -124,6 +10,7 @@ import {
     ProgressData,
     UploadedData,
 } from "./ChunkUploadManager";
+import EncryptDecrypt from "./encryption/EncryptDecrypt.vue";
 
 const environment = ref("detecting...");
 const envClass = computed(() => ({
@@ -135,7 +22,7 @@ const envClass = computed(() => ({
 const fileInput = ref<HTMLInputElement | null>(null);
 const strategy = ref<string>("auto");
 const result = ref<null | {
-    type: string;
+    type: "completed" | "failed" | "processing" | "uploaded";
     title: string;
     message: string;
     jobId?: string;
@@ -383,11 +270,144 @@ const checkStatus = async () => {
     }
 };
 
-// const formatBytes = (bytes: number) => {
-//   if (bytes === 0) return "0 Bytes";
-//   const k = 1024;
-//   const sizes = ["Bytes", "KB", "MB", "GB"];
-//   const i = Math.floor(Math.log(bytes) / Math.log(k));
-//   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-// };
+const onSuccessEncrypted = (filesName:{name:string}[] = []) => {
+  result.value = { type: "completed", "title": "Encryption success", "message": "All files has is encrypted"};
+}
+const onFailEncrypted = (filesName:{name:string}[] = []) => {
+  result.value = { type: "failed", "title": "Encryption failed", "message": filesName.map(file => file.name).join(", ")};
+}
+const onSuccessDecrypted = (filesName:{name:string}[] = []) => {
+  result.value = { type: "completed", "title": "Decryption success", "message": "All files has is decrypted"};
+}
+const onFailDecrypted = (filesName:{name:string}[] = []) => {
+  result.value = { type: "failed", "title": "Decryption failed", "message": filesName.map(file => file.name).join(", ")};
+}
+const onError = (message:string) => {
+  result.value = { type: "failed", "title": "Encrypt / Decrypt failed", "message": message};
+}
 </script>
+
+<template>
+    <div class="upload-manager">
+        <!-- Status Environment -->
+        <div class="env-badge" :class="envClass">
+            <span>Environment: {{ environment }}</span>
+            <span>Strategy: {{ strategy }}</span>
+        </div>
+
+        <!-- Upload Zone -->
+        <div
+            class="upload-zone"
+            @dragover.prevent
+            @drop.prevent="handleDrop"
+        >
+            <div v-if="!uploading" class="file">
+              <div class="svg" title="browse"
+                @click="openFilePicker">
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="48"
+                    height="48"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                >
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+              </div>
+              <div class="info">
+                <p>Drag & drop ZIP file here</p>
+                <p class="hint">or click to browse</p>
+                <p class="limits">Max: {{ formatBytes(maxSize) }}</p>
+                <p class="browse-info">{{ browseInfo }}</p>
+              </div>
+              <div class="svg" title="upload" @click.stop="submitUpload">
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send-icon lucide-send"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></svg>
+              </div>
+            </div>
+            
+            <EncryptDecrypt 
+              v-if="!uploading" 
+              :files="fileBag"
+              @success-encrypted = "onSuccessEncrypted"
+              @fail-encrypted = "onFailEncrypted"
+              @success-decrypted = "onSuccessDecrypted"
+              @fail-decrypted = "onFailDecrypted"
+              @error="onError"
+              />
+
+            <!-- Progress -->
+            <div v-if="uploading" class="progress-container">
+                <div class="progress-bar">
+                    <div
+                        class="progress-fill"
+                        :style="{ width: `${progress}%` }"
+                    ></div>
+                </div>
+                <div class="progress-info">
+                    <div class="progress-percent-speed">
+                      <span class="progress-percent">{{ progress }}%</span>&#160;<span class="progress-speed" v-if="speed">{{ formatBytes(speed) }}/s</span>
+                    </div>
+                    <button @click.stop="pauseResume" :class="['control-btn', isPaused ? 'resume' : 'pause']">
+                        {{ isPaused ? "Resume" : "Pause" }}
+                    </button>
+                    <button @click.stop="cancel" class="control-btn cancel">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div v-if="result" class="result" :class="result.type">
+            <div class="result-icon">
+                <svg
+                    v-if="result.type === 'completed'"
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                >
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <svg
+                    v-else
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                >
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+            </div>
+            <div class="result-content">
+                <h3>{{ result.title }}</h3>
+                <p>{{ result.message }}</p>
+                <div v-if="result.jobId" class="job-info">
+                    <span>Job ID: {{ result.jobId }}</span>
+                    <button @click="checkStatus" class="btn-sm">
+                        Check Status
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hidden file input -->
+        <input
+            type="file"
+            ref="fileInput"
+            multiple
+            @change="handleFileSelect($event as InputEvent)"
+            class="hidden"
+            />
+            <!-- accept=".zip,.tar,.gz" -->
+    </div>
+</template>

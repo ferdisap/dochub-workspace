@@ -13,6 +13,7 @@
     <link href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600" rel="stylesheet" />
 
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="user-email" content="{{ $user['email'] }}">
 
     <!-- Styles / Scripts -->
     @if (file_exists(public_path('vendor/workspace/assets/manifest.json')) || file_exists(public_path('hot')))

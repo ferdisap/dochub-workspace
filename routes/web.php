@@ -1,5 +1,7 @@
 <?php
 
+// DEPRECATED
+
 use Dochub\Controller\WorkspaceCleanupController;
 use Dochub\Controller\WorkspaceController;
 use Dochub\Controller\WorkspaceRollbackController;

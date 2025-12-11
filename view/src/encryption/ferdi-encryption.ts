@@ -12,9 +12,9 @@ import { hkdf } from '@noble/hashes/hkdf.js';
 // ========== UTILS
 const enc = new TextEncoder();
 const dec = new TextDecoder();
-const uploadChunkUrl = '/api/upload-encrypt-chunk';
-const encryptStartUrl = '/api/upload-encrypt-start';
-const processChunkUrl = '/api/upload-encrypt-process';
+const uploadChunkUrl = '/dochub/encryption/upload-chunk';
+const encryptStartUrl = '/dochub/encryption/upload-start';
+const processChunkUrl = '/dochub/encryption/upload-process';
 
 // Hex lebih mudah dibaca/debug — cocok untuk hashname, file ID, logging.. 
 // Tapi tidak bisa menghandle karakter non AsCII (>= 128 seperti "," "_" dll);
