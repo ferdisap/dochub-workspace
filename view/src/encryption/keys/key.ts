@@ -1,8 +1,9 @@
+import { route_encryption_get_publicKey } from "../../helpers/listRoute";
 import { base64ToBytes, bytesToBase64 } from "../ferdi-encryption";
 import { readLocal } from "./localStoreKey";
 
 export async function fetchPublicKey(email: string | null = null) {
-  const endPoint = "/dochub/encryption/get/public-key?" + (email ? `q_mail=${email}` : '');
+  const endPoint = route_encryption_get_publicKey(email);
   const response = await fetch(endPoint, {
     method: "GET",
     headers: {

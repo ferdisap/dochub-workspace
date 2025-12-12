@@ -1,3 +1,6 @@
+import { route_upload_check_chunk, route_upload_get_config, route_upload_per_chunk, route_upload_process_chunk, route_upload_status_process } from "../helpers/listRoute";
+import { getCSRFToken } from "../helpers/toDom";
+
 const isDev = false; // tidak check chunk jika isDev = true
 
 interface UploadConfig {
@@ -212,15 +215,15 @@ export class WaitController {
 
 export class ChunkedUploadManager {
   private _config: UploadConfig;
-  private endpoint: string;
+  // private endpoint: string;
   private uploadId: string | null = null;
   private abortController: AbortController | null = null;
   private metadata: ChunkMetadata | null = null;
 
   private waitController: WaitController;
 
-  constructor(endpoint: string = "/dochub/upload") {
-    this.endpoint = endpoint;
+  // constructor(endpoint: string = "/dochub/upload") {
+  constructor() {
     this._config = {
       driver: "native",
       environment: "development",
@@ -238,7 +241,7 @@ export class ChunkedUploadManager {
     this.uploadId = null;
     // makeWait();
     try {
-      const response = await fetch(`${this.endpoint}/config`);
+      const response = await fetch(route_upload_get_config());
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const config = await response.json();
@@ -403,30 +406,30 @@ export class ChunkedUploadManager {
     return uploadId;
   }
 
-  /**
-   * to check the file has uploaded or not
-   * @returns status code 102 = user / user lain sedang mengupload. Walau di tunda status masih 102
-   * @returns status code 202 = zip sedang di proses untuk di merge/extract
-   * @returns status code 304 = sudah ada chunk
-   * @returns status code 404 = lanjut upload chunk
-   */
-  private async checkUpload(): Promise<number> {
-    const opt = {
-      method: "POST",
-      headers: {
-        "X-Upload-ID": this.uploadId!,
-        "X-CSRF-TOKEN": getCSRFToken(),
-      },
-    };
-    let response: Response;
-    try {
-      response = await fetch(`${this.endpoint}/check`, opt);
-      return response.status; // jika 202,304,404, bahkan 500
-    } catch (e) {
-      // jika response 102
-      return 102;
-    }
-  }
+  // /**
+  //  * to check the file has uploaded or not
+  //  * @returns status code 102 = user / user lain sedang mengupload. Walau di tunda status masih 102
+  //  * @returns status code 202 = zip sedang di proses untuk di merge/extract
+  //  * @returns status code 304 = sudah ada chunk
+  //  * @returns status code 404 = lanjut upload chunk
+  //  */
+  // private async checkUpload(): Promise<number> {
+  //   const opt = {
+  //     method: "POST",
+  //     headers: {
+  //       "X-Upload-ID": this.uploadId!,
+  //       "X-CSRF-TOKEN": getCSRFToken(),
+  //     },
+  //   };
+  //   let response: Response;
+  //   try {
+  //     response = await fetch(`${this.endpoint}/check`, opt);
+  //     return response.status; // jika 202,304,404, bahkan 500
+  //   } catch (e) {
+  //     // jika response 102
+  //     return 102;
+  //   }
+  // }
 
   /**
    * to check the chunk has uploaded or not
@@ -448,7 +451,7 @@ export class ChunkedUploadManager {
     };
     let response: Response;
     try {
-      response = await fetch(`${this.endpoint}/chunk/check`, opt);
+      response = await fetch(route_upload_check_chunk(), opt);
       return response.status; // jika 202,304,404, bahkan 500
     } catch (e) {
       console.error(e);
@@ -494,7 +497,7 @@ export class ChunkedUploadManager {
       }
 
       // 🔑 Pakai fetch dengan Blob + custom headers
-      response = await fetch(`${this.endpoint}/chunk`, {
+      response = await fetch(route_upload_per_chunk(), {
         method: "POST",
         headers: {
           "X-Requested-With": "XMLHttpRequest",
@@ -559,7 +562,7 @@ export class ChunkedUploadManager {
   }> {
     if (!this.uploadId) throw new Error("No upload ID");
 
-    const response = await fetch(`${this.endpoint}/process`, {
+    const response = await fetch(route_upload_process_chunk(), {
       method: "POST",
       headers: {
         "X-Requested-With": "XMLHttpRequest",
@@ -593,7 +596,7 @@ export class ChunkedUploadManager {
    * Cek status upload
    */
   async getStatus(uploadId: string): Promise<any> {
-    const response = await fetch(`${this.endpoint}/${uploadId}/status`, {
+    const response = await fetch(route_upload_status_process(uploadId), {
       headers: {
         "X-Requested-With": "XMLHttpRequest",
       }
@@ -651,11 +654,6 @@ export class ChunkedUploadManager {
     // this.waitController.reset();
     console.log("Upload cancelled");
   }
-}
-
-export function getCSRFToken(): string {
-  const meta = document.querySelector('meta[name="csrf-token"]');
-  return meta ? meta.getAttribute("content") || "" : "";
 }
 
 // export function formatBytes(bytes: number): string {

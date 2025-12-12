@@ -22,7 +22,10 @@ use Illuminate\Support\Facades\App;
 //      {
 //        "path": "config/app.php",
 //        "sha256": "a1b2c3...",
-//        "size": 2048
+//        "size": 2048,
+//        TAMBAHAN Optional:
+//        "mtime" "2025-11-20T14:00:00Z",
+//        "is_binary": true
 //      }
 //   ]
 // }
@@ -131,7 +134,7 @@ class Manifest extends Model
     return $this->belongsTo(User::class, 'from_id');
   }
 
-  // Akses konten lengkap
+  // Akses konten lengkap $this->content
   public function getContentAttribute(): WorkspaceManifest
   {
     return WorkspaceManifest::content($this->storage_path);

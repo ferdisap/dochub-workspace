@@ -184,14 +184,33 @@ class FileUploadProcessJob implements ShouldQueue
     rmdir($dir);
   }
 
-  public function storeFileFromBlob(string $hash, string $relativePath, int $filesize, int $mtime)
+  public function storeManifestRecord(WorkspaceManifest $wsManifest)
+  {
+    if(!(Manifest::where('hash_tree_sha256', $wsManifest->hash_tree_sha256)->first(['id']))){
+      Manifest::create([
+        // workspace_id = null, berarti tidak terkait dengan worksapce
+        'from_id' => $this->userId,
+        'source' => $wsManifest->source,
+        'version' => $wsManifest->version,
+        'total_files' => $wsManifest->total_files,
+        'total_size_bytes' => $wsManifest->total_size_bytes,
+        'hash_tree_sha256' => $wsManifest->hash_tree_sha256,
+        'storage_path' => $wsManifest->storage_path(),
+        'tags' => $wsManifest->tags
+      ]);
+      return true;
+    }
+    return false;
+  }
+
+  public function storeFileRecordFromBlob(string $hash, string $relativePath, int $filesize, int $mtime)
   {
     File::updateOrCreate([
-      'workspace_id' => 0, // zero is nothing. Bisa saja untuk worksapce default
+      'relative_path' => "upload/{$relativePath}", // unique
       'merge_id' => 0, // walau uuid bisa disi 0
-      // 'merge_id' => Str::uuid(),
-      'relative_path' => "upload/{$relativePath}",
+    ],[
       'blob_hash' => $hash,
+      'workspace_id' => 0, // zero is nothing. Bisa saja untuk worksapce default
       //'old_blob_hash', // nullable
       'action' => 'upload',
       'size_bytes' => $filesize,
@@ -214,7 +233,6 @@ class FileUploadProcessJob implements ShouldQueue
       function (string $hash, string $relativePath, string $absolutePath, int $filesize, int $mtime, ?\Exception $e, int $processed, int $total) use (&$totalprocessed, $unlinkIfSuccess) {
         if ($hash || ($e === null)) {
           if ($unlinkIfSuccess) @unlink($absolutePath);
-          $this->storeFileFromBlob($hash, $relativePath, $filesize, $mtime);
           if ($processed % 10 === 0 || $processed === $total) {
             $progress = round(($processed / $total) * 100);
             $this->updateStatus('processing', $progress, [
@@ -270,10 +288,20 @@ class FileUploadProcessJob implements ShouldQueue
       // #1. merge chunked zip
       $this->mergeChunks($totalChunk, $uploadDir, $fileName);
 
-      // #2. change into blob
+      // #2. change into blob (create record of blob)
       $files = $this->scanDirectory($uploadDir);
       $wsManifest = $this->processFilesToBlobs($files, $result);
       $wsManifest->tags = $metadata['tags'] ?? null;
+
+      // #3. create record of manifest
+      if($this->storeManifestRecord($wsManifest)){        
+        $wsManifest->store(); // save to local
+
+        // #4. create record of files from blob
+        foreach ($wsManifest->files as $wsFile) {
+          $this->storeFileRecordFromBlob($wsFile["sha256"], $wsFile["relative_path"], $wsFile["size_bytes"], $wsFile["file_modified_at"]);
+        }
+      }
 
       // Update status sukses
       $result['status'] = 'completed';

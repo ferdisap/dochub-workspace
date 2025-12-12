@@ -80,6 +80,8 @@ class BlobLocalStorage
    */
   private int $partialVerifyThreshold = 50_000_000; // 50 MB
 
+  protected int $partialHashByte = 1_000_000; // 1MB
+
   protected ServicesLockManager $lockManager;
 
   protected array $mimeTextList = [
@@ -305,14 +307,14 @@ class BlobLocalStorage
 
     try {
       // Baca head (1 MB)
-      $head = fread($handle, 1_000_000);
+      $head = fread($handle, self::$partialHashByte);
       if ($head === false) $head = '';
 
       // Baca tail (1 MB)
       $tail = '';
-      if ($size > 1_000_000) {
-        fseek($handle, max(0, $size - 1_000_000));
-        $tail = fread($handle, 1_000_000);
+      if ($size > self::$partialHashByte) {
+        fseek($handle, max(0, $size - self::$partialHashByte));
+        $tail = fread($handle, self::$partialHashByte);
       }
 
       // Gabung: head + size + tail → hash
@@ -465,7 +467,8 @@ class BlobLocalStorage
           throw new RuntimeException("Atomic rename failed");
         }
 
-        @chmod($blobPath, 0444); // agar file tidak bisa di replace atau rewrite (izin baca saja)
+        // agar file tidak bisa di replace atau rewrite (izin baca saja)
+        Blob::setLocalReadOnly($blobPath);
       },
       Config::get('lock.default_timeout_ms', 30000)
     );

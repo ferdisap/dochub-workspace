@@ -23,7 +23,7 @@ class File
     public string $relative_path,
     public string $sha256, // $blob_hash
     public string $size_bytes,
-    public string $file_modified_at,
+    public string $file_modified_at, // tidak diperlukan
   ) {}
 
   public static function create(array $fileArray):self

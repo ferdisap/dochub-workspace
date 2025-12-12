@@ -52,6 +52,8 @@ class UploadNativeController extends UploadController
    */
   public function uploadChunk(Request $request)
   {
+    // 🔑 Validasi file limit
+    $this->validateLimitUpload($request->user()->id);
     // 🔑 Validasi manual (hindari load ke memory)
     $this->validateChunkHeaders($request);
 
@@ -157,13 +159,18 @@ class UploadNativeController extends UploadController
       dispatch($job)->onQueue('uploads');
       $jobId = $job->id;
     } else {
-      // ZipProcessJob::dispatchSync(json_encode($data), Auth::user()->id);
-      FileUploadProcessJob::dispatchSync(json_encode($data), Auth::user()->id);
-      // set job id to metadata
-      $data = $this->cache->getArray($uploadId);
-      $data["job_id"] = 0;
-      // save metadata to cache
-      $this->cache->set($uploadId, $data);
+      try {
+        // ZipProcessJob::dispatchSync(json_encode($data), Auth::user()->id);
+        FileUploadProcessJob::dispatchSync(json_encode($data), Auth::user()->id);
+        // set job id to metadata
+        $data = $this->cache->getArray($uploadId);
+        $data["job_id"] = 0;
+        // save metadata to cache
+        $this->cache->set($uploadId, $data);
+      } catch (\Throwable $th) {
+        $this->cache->cleanupUpload($uploadId, $data);
+        throw $th;
+      }
     }
 
     // Dispatch job untuk prodcution
@@ -193,33 +200,33 @@ class UploadNativeController extends UploadController
     ]);
   }
 
-  public function tesCheckChunk(Request $request, string $uploadId, string $chunkId)
-  {
-    $metadata = $this->cache->getArray($uploadId);
-    dd($metadata, $this->cache->driver());
-    dd($id, $chunkId);
-  }
-  public function tesJob()
-  {
-    // $job = new ZipProcessJob('', Auth::user()->id, 1);
-    // dispatch($job->onQueue('uploads'));
-    // $job = ZipProcessJob::dispatch('fufufafa')->onQueue('uploads');
-    // // $job = ZipProcessJob::dispatch('fufufafa');
-    // $job = new ZipProcessJob('asa', Auth::user()->id, 1);
-    // Event::listen(JobQueued::class, function (JobQueued $event) use (&$jobId) {
-    //   $jobId = $event->id;
-    // });
-    // dispatch($job)->onQueue('uploads');
-    // $job = ZipProcessJob::dispatchWithId('', Auth::user()->id, 1)->onQueue('uploads');
+  // public function tesCheckChunk(Request $request, string $uploadId, string $chunkId)
+  // {
+  //   $metadata = $this->cache->getArray($uploadId);
+  //   dd($metadata, $this->cache->driver());
+  //   dd($id, $chunkId);
+  // }
+  // public function tesJob()
+  // {
+  //   // $job = new ZipProcessJob('', Auth::user()->id, 1);
+  //   // dispatch($job->onQueue('uploads'));
+  //   // $job = ZipProcessJob::dispatch('fufufafa')->onQueue('uploads');
+  //   // // $job = ZipProcessJob::dispatch('fufufafa');
+  //   // $job = new ZipProcessJob('asa', Auth::user()->id, 1);
+  //   // Event::listen(JobQueued::class, function (JobQueued $event) use (&$jobId) {
+  //   //   $jobId = $event->id;
+  //   // });
+  //   // dispatch($job)->onQueue('uploads');
+  //   // $job = ZipProcessJob::dispatchWithId('', Auth::user()->id, 1)->onQueue('uploads');
 
-    // $job = ZipProcessJob::withId('', Auth::user()->id, 1);
-    // $pending = dispatch($job)->onQueue('uploads');
-    // dd($job);
-    $job = ZipProcessJob::withId('', Auth::id(), 1);
-    dispatch($job);
-    dd($job->id); // selalu berisi, baik chaining ataupun tidak
-    // dd($job, $job->getJob()->id);
-  }
+  //   // $job = ZipProcessJob::withId('', Auth::user()->id, 1);
+  //   // $pending = dispatch($job)->onQueue('uploads');
+  //   // dd($job);
+  //   $job = ZipProcessJob::withId('', Auth::id(), 1);
+  //   dispatch($job);
+  //   dd($job->id); // selalu berisi, baik chaining ataupun tidak
+  //   // dd($job, $job->getJob()->id);
+  // }
 
   private function check_progress(array $metadata): bool
   {

@@ -13,6 +13,35 @@ use Illuminate\Validation\Rule; // Import the Rule facade
 
 use function Illuminate\Support\now;
 
+// storage/
+// ├── workspaces/
+// │   └── {workspace-id}/       # versi live (symlink/hardlink ke blobs)
+// │
+// ├── blobs/                    # file unik, dinamai SHA256
+// │   ├── abc123...             # config/app.php versi lama
+// │   └── def456...             # config/app.php versi baru
+// │
+// ├── backups/
+// │   └── merge-42.tar.gz      # hanya berisi file yang berubah di merge #42
+// │                             # (opsional — bisa dihilangkan jika pakai blobs)
+// │
+// └── manifests/
+//     └── merge-42-manifest.json  # simpan manifest asli dari third-party (audit)
+
+// ALUR ROLLBACK merge_id = 42 Qwen_mermaid
+// graph LR
+//     A[User: rollback ke merge_id=42] --> B[Ambil record merge_sessions#42]
+//     B --> C[Ambil semua merge_files WHERE merge_session_id=42]
+//     C --> D{Untuk tiap file}
+//     D -->|action=updated| E[Restore old_hash dari blobs/ atau dari backup archive]
+//     D -->|action=deleted| F[Ekstrak file dari merge-42.tar.gz → tempatkan di workspace]
+//     D -->|action=added| G[Hapus file dari workspace]
+//     E --> H[Update workspace_files]
+//     F --> H
+//     G --> H
+//     H --> I[Selesai — workspace kembali ke state sebelum merge #42]
+// Jika kamu pakai blobs/{hash} untuk deduplikasi, kamu bahkan tidak perlu ekstrak archive — cukup baca old_hash → ambil dari blobs/old_hash.
+
 class WorkspaceRollbackController
 {
   public function rollback(Request $request, int $workspaceId)

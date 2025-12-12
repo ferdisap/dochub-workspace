@@ -10,18 +10,23 @@ Route::prefix('dochub')->middleware([
   'web',
   'throttle:100,1' // 100 chunk/menit
 ])->group(function () {
+  // view start upload
   Route::get('/upload', [UploadController::class, 'formView'])->middleware('auth');
-  // tambahkan ->middleware('throttle:100,1'); // 100 chunk/menit
+  // list uploaded
   Route::get('/upload/list', [UploadController::class, 'listView'])->middleware('auth');
+  Route::post('/upload/list', [UploadController::class, 'list'])->middleware('auth');
+  // config before upload, check and put chunk, process
   Route::get('/upload/config', [UploadController::class, 'getConfig'])->middleware('auth')->name('dochub.upload.config');
-  Route::post('/upload/check', [UploadNativeController::class, 'checkUpload'])->middleware('auth')->name('dochub.upload.check');
-  Route::post('/upload/chunk', [UploadNativeController::class, 'uploadChunk'])->middleware('auth')->name('dochub.upload.chunk.check');
   Route::post('/upload/chunk/check', [UploadNativeController::class, 'checkChunk'])->middleware('auth')->name('dochub.upload.check');
+  Route::post('/upload/chunk', [UploadNativeController::class, 'uploadChunk'])->middleware('auth')->name('dochub.upload.chunk.check');
   Route::post('/upload/process', [UploadNativeController::class, 'processUpload'])->middleware('auth')->name('dochub.upload.process');
+  // polling status chunk and delete
   Route::get('/upload/{id}/status', [UploadNativeController::class, 'getUploadStatus'])->middleware('auth')->name('dochub.upload.status');
   Route::delete('/upload/{id}/delete', [UploadNativeController::class, 'deleteUpload'])->middleware('auth')->name('dochub.upload.delete');
+  // cast to workspace
+  Route::post('/upload/make/workspace', [UploadController::class, 'makeWorkspace'])->middleware('auth')->name('dochub.upload.make.workspace');
 
-  Route::get('/tes/chunk/{uploadId}/{chunkId}', [UploadNativeController::class, 'tesCheckChunk']);
+  // Route::get('/tes/chunk/{uploadId}/{chunkId}', [UploadNativeController::class, 'tesCheckChunk']);
 
   // Route::get("/tes", [UploadNativeController::class, 'tesJob']);
 

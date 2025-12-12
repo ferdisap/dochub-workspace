@@ -30,7 +30,7 @@ class Manifest
     public string $version,
     public int $total_files,
     public int $total_size_bytes,
-    public array $files,
+    public array $files, // berisi WsFile 
   ) {
     $this->hash_tree_sha256 = self::hash($this->files);
   }

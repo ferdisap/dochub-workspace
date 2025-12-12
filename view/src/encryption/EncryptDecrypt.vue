@@ -4,6 +4,7 @@
 	import { encryptAndSaveFile } from "./ferdi-full-encryption";
 	import { fetchPublicKey, getPrivateKey, getPublicKey } from "./keys/key";
 	import { decryptAndSaveFile } from "./ferdi-decryption";
+import { route_encryption_search_user } from "../helpers/listRoute";
 
 	interface SearchUser {
 		email: number;
@@ -42,7 +43,7 @@
 	async function onSearch(query: string) {
 		delay(async () => {
 			const response = await fetch(
-				`/dochub/encryption/get/users?q_mail=${query}`,
+				route_encryption_search_user(query),
 				{
 					method: "GET",
 					headers: {

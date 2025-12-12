@@ -8,6 +8,8 @@
 	} from "../ferdi-encryption";
 	import { clearDB, erase, eraseKEK, readLocal, storeLocal } from "./localStoreKey";
   import { fetchPublicKey, getPrivateKey } from "./key";
+import { getCSRFToken } from "view/src/helpers/toDom";
+import { route_encryption_register_publicKey, route_encryption_search_user } from "view/src/helpers/listRoute";
 
 	const userId = ref(null);
 	const passphrase = ref<string>("");
@@ -37,7 +39,7 @@
 		} catch (e) {
 			if (!userId.value) {
 				try {
-					await fetch("/dochub/encryption/get/user").then(async (response) => {
+					await fetch(route_encryption_search_user()).then(async (response) => {
 						const data = await response.json();
 						userId.value = data.user.email;
 					});
@@ -83,7 +85,7 @@
 	async function storeServerPublicKey() {
 		success.value = "";
 		loading.value = true;
-		const response = await fetch("/dochub/encryption/register/public-key", {
+		const response = await fetch(route_encryption_register_publicKey(), {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -95,11 +97,6 @@
 		loading.value = false;
 		success.value = "Public key stored to server.";
 		return response.ok ? true : false;
-	}
-
-	function getCSRFToken(): string {
-		const meta = document.querySelector('meta[name="csrf-token"]');
-		return meta ? meta.getAttribute("content") || "" : "";
 	}
 
 	async function readServerPublicKey(): Promise<string | undefined> {

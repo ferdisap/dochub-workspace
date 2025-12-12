@@ -25,6 +25,17 @@ class Blob
     return Workspace::blobPath() . ($path ? "/{$path}" : "");
   }
 
+  public static function setLocalReadOnly(string $blobPath){
+    // agar file tidak bisa di replace atau rewrite (izin baca saja)
+    @chmod($blobPath, 0444); 
+  }
+  
+  public static function setLocalReadWrite(string $blobPath){
+    // Mengubah izin menjadi 0644 (read/write untuk pemilik, read-only untuk lainnya)
+    @chmod($blobPath, 0644);
+    // Grup (4) & Lainnya (4): Sebaiknya hanya bisa membaca file (misalnya, agar server web dapat menampilkan gambar atau file CSS kepada pengunjung).
+  }
+
   /**
    * get hash path
    */
@@ -52,10 +63,13 @@ class Blob
         }
         
         $filesize = filesize($filePath);
-        $mtime = filemtime($filePath);
+        // $mtime = filemtime($filePath);
 
-        if($filePath && $mtime){
+        // if($filePath && $mtime){
+        if($filePath){
           $hash = $this->blobStorage->store($filePath);
+          $blobPath = $this->blobStorage->getBlobPath($hash);
+          $mtime = filemtime($blobPath);
           $processed++;
   
           $total_size_bytes += $filesize;
@@ -78,6 +92,23 @@ class Blob
     );
     $wsManifest->store();
     return $wsManifest;
+  }
+
+  public function readStream(string $hash, callable $callback){
+    return $this->blobStorage->readStream($hash, $callback);
+  }
+
+  public function isExist(string $hash){
+    return file_exists($this->blobStorage->getBlobPath($hash));
+  }
+
+  public function destroy(string $hash){
+    $blobPath = $this->blobStorage->getBlobPath($hash);
+    if(file_exists($blobPath)){
+      self::setLocalReadWrite($blobPath);
+      return unlink($blobPath);
+    }
+    return false;
   }
 
   // public function hasBlobbed(string $filePath)

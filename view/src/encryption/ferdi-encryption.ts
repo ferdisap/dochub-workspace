@@ -7,14 +7,15 @@ import { numberToBytesLE } from '@noble/curves/utils.js';
 import { sha512, sha256 } from '@noble/hashes/sha2.js';
 import { argon2id, createSHA256 } from 'hash-wasm';
 import { hkdf } from '@noble/hashes/hkdf.js';
+import { route_encryption_upload_chunk, route_encryption_upload_process, route_encryption_upload_start } from '../helpers/listRoute';
 
 
 // ========== UTILS
 const enc = new TextEncoder();
 const dec = new TextDecoder();
-const uploadChunkUrl = '/dochub/encryption/upload-chunk';
-const encryptStartUrl = '/dochub/encryption/upload-start';
-const processChunkUrl = '/dochub/encryption/upload-process';
+const uploadChunkUrl = route_encryption_upload_chunk();
+const encryptStartUrl = route_encryption_upload_start();
+const processChunkUrl = route_encryption_upload_process();
 
 // Hex lebih mudah dibaca/debug — cocok untuk hashname, file ID, logging.. 
 // Tapi tidak bisa menghandle karakter non AsCII (>= 128 seperti "," "_" dll);

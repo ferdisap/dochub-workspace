@@ -47,6 +47,7 @@ return [
   'chunk_size' => env('UPLOAD_CHUNK_SIZE', 1 * 1024 * 1024), // 1 MB
   'timeout' => env('UPLOAD_TIMEOUT', 300), // job queue timeout
   'expiration' => env('UPLOAD_EXPIRATION', 604800), // 7 hari
+  'limit_file' => 100, // 7 hari
 
   /*
     |--------------------------------------------------------------------------

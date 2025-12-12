@@ -19,6 +19,7 @@ import * as pdfjs from 'pdfjs-dist';
 // Reuse dari ferdi-encryption.ts
 import { deriveWrapKey, deriveX25519KeyPair } from './ferdi-encryption';
 import { DocumentInitParameters, RenderParameters } from 'pdfjs-dist/types/src/display/api';
+import { route_encryption_download_file } from '../helpers/listRoute';
 
 // Setup worker (wajib!)
 pdfjs.GlobalWorkerOptions.workerSrc =
@@ -988,7 +989,7 @@ export async function downloadAndOpenPdf(
   debugLog('🧪 Contoh: downloadAndOpenPdf() — pakai Blob');
   try {
     const { plaintextStream, meta } = await downloadAndDecryptFile(
-      `/dochub/encryption/download-file/${fileId}`,
+      route_encryption_download_file(fileId),
       readerPrivateKey,
       readerUserId,
     );
@@ -1086,7 +1087,7 @@ export async function printTextFile(
   debugLog('🧪 Contoh: printTextFile() — pakai text decoder');
   try {
     const { plaintextStream, meta } = await downloadAndDecryptFile(
-      `/dochub/encryption/download-file/${fileId}`,
+      route_encryption_download_file(fileId),
       readerPrivateKey,
       readerUserId,
     );
@@ -1107,7 +1108,7 @@ export async function downloadTextFile(
   debugLog('🧪 Contoh: downloadTextFile() — pakai Blob');
   try {
     const { plaintextStream, meta } = await downloadAndDecryptFile(
-      `/dochub/encryption/download-file/${fileId}`,
+      route_encryption_download_file(fileId),
       readerPrivateKey,
       readerUserId,
     );
@@ -1137,7 +1138,7 @@ export async function renderPdfToCanvas(
   debugLog('🧪 Contoh: renderPdfToCanvas() — streaming ke PDF.js');
   try {
     const { plaintextStream, meta } = await downloadAndDecryptFile(
-      `/dochub/encryption/download-file/${fileId}`,
+      route_encryption_download_file(fileId),
       readerPrivateKey,
       readerUserId,
     );
@@ -1172,7 +1173,7 @@ export async function renderLargePdf(
   canvasId: string) {
   try {
     const { plaintextStream, meta } = await downloadAndDecryptFile(
-      `/dochub/encryption/download-file/${fileId}`,
+      route_encryption_download_file(fileId),
       readerPrivateKey,
       readerUserId
     );
