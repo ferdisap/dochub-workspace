@@ -26,6 +26,7 @@ class WorkspaceServiceProvider extends ServiceProvider
     $this->loadRoutesFrom(__DIR__ . '/../../../routes/manifest.php');
     $this->loadRoutesFrom(__DIR__ . '/../../../routes/upload.php');
     $this->loadRoutesFrom(__DIR__ . '/../../../routes/workspace.php');
+    $this->loadRoutesFrom(__DIR__ . '/../../../routes/token.php');
 
     // ✅ View >>> php artisan vendor:publish --tag=workspace-views
     // 1. Daftarkan Views

@@ -11,7 +11,7 @@ class EncryptionKey extends Model
 
   protected $fillable = [
     'user_id',
-    'public_key',
+    'public_key', // base64
   ];
 
   protected $casts = [
