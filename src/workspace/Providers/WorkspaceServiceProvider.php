@@ -16,6 +16,7 @@ class WorkspaceServiceProvider extends ServiceProvider
   {
     // ✅ Load config — tanpa foundation
     $this->mergeConfigFrom(__DIR__ . '/../../../config/workspace.php', 'workspace');
+    $this->mergeConfigFrom(__DIR__ . '/../../../config/token.php', 'dochub.token');
 
     // ✅ Auto-load migrations — tanpa foundation
     $this->loadMigrationsFrom(__DIR__ . '/../../../database/migrations');

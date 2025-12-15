@@ -31,6 +31,6 @@ class AccessToken extends Model
   }
 
   public function savedToken(){
-    return $this->hasOne(SavedToken::class, 'token_id');
+    return $this->hasOne(SavedToken::class, 'provider', 'provider');
   }
 }

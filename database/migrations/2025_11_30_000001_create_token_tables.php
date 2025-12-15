@@ -13,7 +13,7 @@ return new class extends Migration
       $table->id();
       $table->foreignId('user_id')->index();   // token milik user mana (jika applicable)
       // $table->string('provider')->default('passport');     // jika nanti multi-oauth provider, provider → fleksibel jika nanti support Google / GitHub / SSO lain
-      $table->string('provider')->nullable();     // jika nanti multi-oauth provider, provider → fleksibel jika nanti support Google / GitHub / SSO lain
+      $table->string('provider');    // jika nanti multi-oauth provider, provider → fleksibel jika nanti support Google / GitHub / SSO lain
       $table->mediumText('access_token');     // <– FIX // hashed
       $table->mediumText('refresh_token')->nullable(); // <– FIX // hashed
       // $table->string('token_hash', 128);    // <– FIX
@@ -28,10 +28,10 @@ return new class extends Migration
     Schema::create('dochub_saved_token', function (Blueprint $table) {
       $table->id();
       $table->foreignId('user_id')->index();   // token milik user mana (jika applicable)
+      $table->string('provider');     // jika nanti multi-oauth provider, provider → fleksibel jika nanti support Google / GitHub / SSO lain
       $table->mediumText('access_token');     // <– FIX // hashed
       $table->mediumText('refresh_token')->nullable(); // <– FIX // hashed
       $table->timestamp('expires_at')->nullable();          // dihitung dari expires_in
-      $table->mediumText('token_id'); // address to dochub_token
       $table->timestamps();
     });
   }

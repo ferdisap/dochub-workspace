@@ -12,7 +12,6 @@ class SavedToken extends Model
 
   protected $fillable = [
     'user_id',
-    'token_id',
     'provider',
     'access_token', // hashed di controller
     'refresh_token', // hashed di controller

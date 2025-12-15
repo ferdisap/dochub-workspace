@@ -26,23 +26,65 @@ class TokenController
 
   private function generateExpirationTokenDate()
   {
-    return now()->addHour(); // 1 jam lagi
+    $exp_minutes = config('dochub.token.expiration', 60);
+    return now()->addMinutes($exp_minutes); // 1 jam lagi
   }
 
   private function saveToken(AccessToken $token, string $access_token_raw, ?string $refresh_token_raw = null)
   {
-    if($token->provider === env('APP_URL')){
+    $saveMode = config('dochub.token.save-mode', 'none');
+    $saveFn = function () use ($token, $access_token_raw, $refresh_token_raw) {
       $arr = [
-        'token_id' => $token->id,
         'user_id' => $token->user_id,
         'access_token' => $access_token_raw,
+        'provider' => $token->provider,
         'expires_at' => $token->expires_at,
       ];
-      if($refresh_token_raw){
+      if ($refresh_token_raw) {
         $arr['refresh_token'] = $refresh_token_raw;
       }
       SavedToken::updateOrCreate($arr);
+    };
+    switch ($saveMode) {
+      case 'first-client':
+        if ($token->provider === env('APP_URL')) {
+          $saveFn();
+        }
+        return;
+      case 'third-client':
+        if ($token->provider != env('APP_URL')) {
+          $saveFn();
+        }
+        return;
+      case 'all':
+        $saveFn();
+        return;
+      default:
+        return;
     }
+  }
+
+  /**
+   * eg ouput
+   * {
+   *     "token": {
+   *         "provider": "http:\/\/localhost:1001",
+   *         "access_token": "3c2765f41495a680749c2487e2949b88f8419083efe2c715f170bdc539c368ee", // siap pakai
+   *         "refresh_token": "afcc5494b2c42bf3ef14c09cf9a611b9c95d1ed6bc446e0c049d5a98e2eb70d3", // siap pakai
+   *         "expires_at": "2025-12-15T07:28:31.000000Z"
+   *     }
+   * }
+   * */
+  public function getSavedToken(Request $request)
+  {
+    $provider = $request->input('provider') ?? env('APP_URL');
+    $recordSaved = SavedToken::where('provider', $provider)
+                    ->where('user_id', $request->user()->id)
+                    ->first();
+    $recordSaved->makeHidden(['id', 'token_id', 'updated_at', 'created_at', 'user_id']); // only 'refresh_token', 'access_token', 'expires_at', 'provider'
+    return response()->json([
+      'token' => $recordSaved
+    ]);
   }
 
   public function deleteToken(Request $request, AccessToken $token)
@@ -55,7 +97,7 @@ class TokenController
 
       $token->delete();
 
-      if($savedToken){
+      if ($savedToken) {
         $savedToken->delete();
       }
 
@@ -74,12 +116,12 @@ class TokenController
     return response()->json([
       "token" => $token,
       // "tokens" => AccessToken::where('user_id', $request->user()->id)->get(['id', 'provider', 'access_token', 'revoked', 'expires_at']),
-    ],500);
+    ], 500);
   }
   public function listToken(Request $request)
   {
     return response()->json([
-      "tokens" => AccessToken::where('user_id', $request->user()->id)->get(['id', 'provider', 'access_token', 'revoked', 'expires_at']),
+      "tokens" => AccessToken::with('savedToken')->where('user_id', $request->user()->id)->get(['id', 'provider', 'access_token', 'revoked', 'expires_at']),
     ]);
   }
   public function listSavedToken(Request $request)
@@ -99,8 +141,8 @@ class TokenController
 
     // validate is current user has token or not
     $existing_token = AccessToken::where('user_id', $request->user()->id)->where('provider', $provider)->first(['id']);
-    if($existing_token){
-      return response()->json('Token existed',403); // forbidden to re create token
+    if ($existing_token) {
+      return response()->json('Token existed', 403); // forbidden to re create token
     }
 
     // --- Proses Pembuatan Token Aman ---
@@ -122,7 +164,7 @@ class TokenController
 
     // save token
     $this->saveToken($tokenRecord, $access_token_raw, $refresh_token_raw);
-    
+
     return response()->json([
       "token" => [
         'id' => $tokenRecord->id,
