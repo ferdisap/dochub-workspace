@@ -37,7 +37,9 @@ class MakeWorkspaceFromZipJob extends FileUploadProcessJob implements ShouldQueu
 
   // public string $manifestModelSerialized; // string json
   public int $userId;
-  
+
+  protected string $prefixPath = "";
+
   public static function withId(string $manifestModelSerialized, int $userId): self
   {
     $dataManifestModelSerialized = json_decode($manifestModelSerialized, true);
@@ -76,7 +78,7 @@ class MakeWorkspaceFromZipJob extends FileUploadProcessJob implements ShouldQueu
   {
     $this->cache = new NativeCache();
     $data = json_decode($this->metadata, true);
-    if(!isset($this->processId)) {
+    if (!isset($this->processId)) {
       $this->processId = $data['process_id'];
     }
 
@@ -92,41 +94,12 @@ class MakeWorkspaceFromZipJob extends FileUploadProcessJob implements ShouldQueu
     $this->putBlobToMetadata($blobModel);
     $workspaceName = self::getWorkspaceNameFromWsFile($wsFile);
 
-    
-    // --- debug
-    // $metadata = $this->cache->getArray($this->processId);
-    // $update = array_merge($metadata, [
-    //   'status' => 'completed',
-    //   'updated_at' => now()->timestamp,
-    // ], $data);
-
-    // $this->cache->set($this->processId, json_encode($update));
-    // return;
-    // --- debug
-
-    $workspaceModel = ModelsWorkspace::create([
+    $workspaceModel = ModelsWorkspace::firstOrCreate([
+      'name' => $workspaceName,
+    ], [
       'name' => $workspaceName,
       'visibility' => 'private',
       'owner_id' => $manifestModel->from_id,
-    ]);
-
-    $mergeModel = Merge::create([
-      'workspace_id' => $workspaceModel->id,
-      'manifest_id' => $manifestModel->id,
-      'merged_at' => $now,
-      'label' => 'v1.0.0',
-      'message' => 'merge is done by uploading file ' . $wsFile->sha256
-    ]);
-
-    $mergeSessionModel = MergeSession::create([
-      'target_workspace_id' => $workspaceModel->id,
-      'initiated_by_user_id' => $this->userId,
-      'result_merge_id' => $mergeModel->id,
-      'source_identifier' => "upload:" . basename($wsFile->relative_path), // include file extension
-      'source_type' => 'upload',
-      'started_at' => $now,
-      'status' => 'pending',
-      // metadata null, berdasarkan db_structure ini bisa dipakai jika ada syncronizing dari third-party
     ]);
 
     $result = [
@@ -155,9 +128,25 @@ class MakeWorkspaceFromZipJob extends FileUploadProcessJob implements ShouldQueu
       if ($this->storeManifestRecord($wsManifest, $workspaceModel->id)) {
         $wsManifest->store(); // save to local
 
-        // #4. create record of files from blob
-        foreach ($wsManifest->files as $wsFile) {
-          $this->storeFileRecordFromBlob($wsFile["sha256"], $wsFile["relative_path"], $wsFile["size_bytes"], $wsFile["file_modified_at"]);
+        // #4. if manifest_hash is already added to dochub_merges, igonore it. Otherwise assign manifest_hash in dochub_merges
+        // untuk menghindari double merge, chek dahulu berdasarkan hash_tree_sha256
+        if (!($mergeModel = Merge::where('manifest_hash', $wsManifest->hash_tree_sha256)->first(['id']))) {
+          $fillableMerge = [
+            'workspace_id' => $workspaceModel->id,
+            'manifest_hash' => $wsManifest->hash_tree_sha256,
+            // 'label' => 'v1.0.0',
+            'merged_at' => $now,
+            'message' => 'merge is done by uploading file ' . $wsFile->sha256
+          ];
+          if ($latestMerge = $workspaceModel->latestMerge()) {
+            $fillableMerge['prev_merge_id'] = $latestMerge->id;
+          }
+          $mergeModel = Merge::create($fillableMerge);
+        }
+
+        // #5. create record of files from blob
+        foreach ($wsManifest->files as $wsFileinZip) {
+          $this->storeFileRecordFromBlob($wsFileinZip["sha256"], $wsFileinZip["relative_path"], $wsFileinZip["size_bytes"], $wsFileinZip["file_modified_at"], (int) $workspaceModel->id, (string) $mergeModel->id);
         }
       }
 
@@ -168,13 +157,23 @@ class MakeWorkspaceFromZipJob extends FileUploadProcessJob implements ShouldQueu
 
       $this->updateStatus('completed', 100, $result);
 
+      // #6. assign completed_at and status to dochub_merge_session
+      $mergeSessionModel = MergeSession::create([
+        'target_workspace_id' => $workspaceModel->id,
+        'initiated_by_user_id' => $this->userId,
+        'result_merge_id' => $mergeModel->id,
+        'source_identifier' => "upload:" . basename($wsFile->relative_path), // include file extension
+        'source_type' => 'upload',
+        'started_at' => $now,
+        'status' => 'pending',
+        // metadata null, berdasarkan db_structure ini bisa dipakai jika ada syncronizing dari third-party
+      ]);
+      $mergeSessionModel->completed_at = now();
       $mergeSessionModel->status = 'applied';
       $mergeSessionModel->save();
       return $result;
     } catch (\Exception $e) {
-      $workspaceModel->delete();
-      $mergeModel->delete();
-      $mergeSessionModel->delete();
+      if(isset($mergeModel)) $mergeModel->delete();
 
       $result['status'] = 'failed';
       $result['error'] = $e->getMessage();

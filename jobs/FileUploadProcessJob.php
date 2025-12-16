@@ -199,7 +199,8 @@ class FileUploadProcessJob implements ShouldQueue
 
   public function storeManifestRecord(WorkspaceManifest $wsManifest, int $workspaceId = 0)
   {
-    if(!(Manifest::where('hash_tree_sha256', $wsManifest->hash_tree_sha256)->first(['id']))){
+    $manifestModel = null;
+    if(!($manifestModel = Manifest::where('hash_tree_sha256', $wsManifest->hash_tree_sha256)->first(['id']))){
       $fillable = [
         // workspace_id = null, berarti tidak terkait dengan worksapce
         'from_id' => $this->userId,
@@ -212,22 +213,22 @@ class FileUploadProcessJob implements ShouldQueue
         'tags' => $wsManifest->tags
       ];
       if($workspaceId || (int) $workspaceId > 0) $fillable['workspace_id'] = $workspaceId;
-      Manifest::create($fillable);
-      return true;
+      $manifestModel = Manifest::create($fillable);
+      return $manifestModel;
     }
-    return false;
+    return $manifestModel;
   }
 
-  public function storeFileRecordFromBlob(string $hash, string $relativePath, int $filesize, int $mtime)
+  public function storeFileRecordFromBlob(string $hash, string $relativePath, int $filesize, int $mtime, int $workspaceId = 0, string $mergeId = '0')
   {
     File::updateOrCreate([
-      'relative_path' => "upload/{$relativePath}", // unique
-      'merge_id' => 0, // walau uuid bisa disi 0
+      'relative_path' => ($this->prefixPath ? $this->prefixPath . "/" : "") . $relativePath, // unique
+      'merge_id' => $mergeId, // walau uuid bisa disi 0
     ],[
       'blob_hash' => $hash,
-      'workspace_id' => 0, // zero is nothing. Bisa saja untuk worksapce default
+      'workspace_id' => $workspaceId, // zero is nothing. Bisa saja untuk worksapce default
       //'old_blob_hash', // nullable
-      'action' => 'upload',
+      'action' => 'upload', // walaupun fungsi ini dipakai di turunan, action tetap upload karena file asalnya adalah uploadan
       'size_bytes' => $filesize,
       'file_modified_at' => $mtime
     ]);
@@ -303,9 +304,9 @@ class FileUploadProcessJob implements ShouldQueue
 
       // #1. merge chunked zip
       $this->mergeChunks($totalChunk, $uploadDir, $fileName);
-      Log::info("mtime adalah {$mtime}", []);
+      // Log::info("mtime adalah {$mtime}", []);
       touch($this->filePath, $mtime); // 1764759214 
-      Log::info("setelah touced adalah " . filemtime($this->filePath), []);
+      // Log::info("setelah touced adalah " . filemtime($this->filePath), []);
 
       // #2. change into blob (create record of blob)
       $files = $this->scanDirectory($uploadDir);

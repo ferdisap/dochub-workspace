@@ -43,14 +43,17 @@ class Workspace extends Model
   /** mengambil semua merge */
   public function merges()
   {
-    return $this->hasMany(File::class, 'workspace_id');
+    return $this->hasMany(Merge::class, 'workspace_id');
   }
   /** latest merge */
   public function latestMerge()
   {
-    return $this->merges()->latest('merged_at')->first();
+    try {
+      return $this->merges()->latest('merged_at')->first();
+    } catch (\Throwable $th) {
+      return null;
+    }
   }
-
 
   /**
    * Scope: Cari workspace yang merupakan hasil rollback

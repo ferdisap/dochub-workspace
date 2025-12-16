@@ -149,6 +149,7 @@ import { route_encryption_search_user } from "../helpers/listRoute";
 		<div class="info">
 			<p>E2EE encryption file</p>
 			<p class="hint">Only targetted user can decrypt the file</p>
+      <p class="hint">If you dont have the key, register <a href="/dochub/encryption/register/public-key" class="underline text-blue-500">here</a></p>
 		</div>
 		<div class="receipents">
 			<div class="dropdown-container">

@@ -126,7 +126,7 @@ class Manifest extends Model
   // Relasi
   public function merges()
   {
-    return $this->hasMany(Merge::class, 'manifest_id');
+    return $this->hasMany(Merge::class, 'manifest_hash', 'hash_tree_sha256');
   }
 
   public function user()

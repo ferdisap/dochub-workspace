@@ -12,7 +12,7 @@ return new class extends Migration
     Schema::create('dochub_workspaces', function (Blueprint $table) {
       $table->id();
       $table->foreignId('owner_id'); //->constrained('users');
-      $table->string('name');
+      $table->string('name')->unique();
       $table->string('visibility')->default('private');
       $table->softDeletes();
       $table->timestamps();
@@ -38,7 +38,7 @@ return new class extends Migration
       $table->string('id', 36)->primary(); // UUID, gunakan UUID sebagai ID (lebih aman untuk sync/distribusi)
       $table->string('prev_merge_id', 36)->nullable();
       $table->foreignId('workspace_id'); //->constrained('dochub_workspaces');
-      $table->foreignId('manifest_id')->nullable(); //->constrained('dochub_manifests');
+      $table->string('manifest_hash',64)->nullable(); //->constrained('dochub_manifests');
       $table->string('label')->nullable(); // 'v1.2.3'
       $table->text('message')->nullable();
       $table->timestamp('merged_at');

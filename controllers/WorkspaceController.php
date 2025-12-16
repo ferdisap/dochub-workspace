@@ -12,6 +12,13 @@ use Illuminate\Validation\Rule; // Import the Rule facade
 
 class WorkspaceController
 {
+  public function detail(Request $request, Workspace $workspace)
+  {
+    // dd($workspace->merges[0]->id); // 4189e063-e286-410f-9e5e-6b556d99b613
+    // dd($workspace->merges[0]->files[0]->relative_path);
+    dd($workspace->merges[0]->previousMerge);
+  }
+
   public function blank(Request $request)
   {
     $request->validate([

@@ -9,6 +9,9 @@ Route::prefix('dochub')->middleware([
   'web', // diubah jika authentication pakai web
   'throttle:100,1' // 100 chunk/menit
 ])->group(function () {
+  // READ
+  Route::get('/workspace/detail/{workspace:name}', [WorkspaceController::class, 'detail'])->middleware('auth')->name('workspace.detail');
+  
   // CREATE Eksekusi new
   Route::get('/workspace/blank', [WorkspaceController::class, 'blank'])->middleware('auth')->name('workspace.blank');
   Route::get('/workspace/clone/{workspace:name}', [WorkspaceController::class, 'clone'])->middleware('auth')->name('workspace.clone');

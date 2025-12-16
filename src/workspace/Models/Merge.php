@@ -19,7 +19,7 @@ class Merge extends Model
     'id', // UUID
     'prev_merge_id',
     'workspace_id',
-    'manifest_id',
+    'manifest_hash',
     'label',
     'message',
     'merged_at'
@@ -56,14 +56,13 @@ class Merge extends Model
 
   public function manifest(): BelongsTo
   {
-    return $this->belongsTo(Manifest::class, 'manifest_id');
+    return $this->belongsTo(Manifest::class, 'manifest_hash', 'hash_tree_sha256');
   }
 
   public function files(): HasMany
   {
-    // return $this->hasMany(File::class, 'merge_id');
     // setiap merge, memiliki file yang workspace id nya sama
-    return $this->hasMany(File::class, 'workspace_id');
+    return $this->hasMany(File::class, 'merge_id');
   }
 
   public function prevMerges(): HasMany

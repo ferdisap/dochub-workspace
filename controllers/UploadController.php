@@ -184,11 +184,12 @@ class UploadController
       return response("Files must be zip formated, actual " . $blob->mime_type, 400);
     }
 
+    // tidak ada validasi workspace name. Jika existing ada maka akan di merge. Meskipun filenya sama tidak akan membuat record apapun kecuali dochub_merge_session record
     // validasi workspace name
-    $workspaceName = MakeWorkspaceFromZipJob::getWorkspaceNameFromWsFile($wsFile);
-    if (Workspace::where('name', $workspaceName)->first('id')) {
-      return response("Files name exist, {$workspaceName}", 400);
-    }
+    // $workspaceName = MakeWorkspaceFromZipJob::getWorkspaceNameFromWsFile($wsFile);
+    // if (Workspace::where('name', $workspaceName)->first('id')) {
+    //   return response("Files name exist, {$workspaceName}", 400);
+    // }
 
     $processId = $wsManifest->hash_tree_sha256;
     $filesize = $wsManifest->total_size_bytes;
