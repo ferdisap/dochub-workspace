@@ -40,7 +40,7 @@ class FileUploadProcessJob implements ShouldQueue
   public int $id = 0;
   public string $uuid = ''; // jika fail bisa dicari tahu di table failed_jobs
 
-  public string $uploadId;
+  public string $processId; // berbeda dengan $id. $id adalah $event->id
   public string $filePath;
 
   protected NativeCache $cache;
@@ -51,6 +51,14 @@ class FileUploadProcessJob implements ShouldQueue
   protected string $prefixPath = "upload";
   /**
    * Create a new job instance.
+   * $metadata['file_name']
+   * $metadata['upload_dir']
+   * $metadata['total_chunks']
+   * $metadata['process_id']
+   * $metadata['tags']
+   * $data["job_id"]
+   * $data["job_uuid"]
+   * $data['process_id']
    */
   public function __construct(string $metadata, int $userId)
   {
@@ -67,7 +75,8 @@ class FileUploadProcessJob implements ShouldQueue
   public static function withId(string $metadata, int $userId): self
   {
     $job = new static($metadata, $userId);
-    Event::listen(JobQueued::class, function (JobQueued $event) use (&$job, $metadata) {
+    $cache = new NativeCache();
+    Event::listen(JobQueued::class, function (JobQueued $event) use (&$job, $metadata, $cache) {
       // set job id for job class
       $job->id = $event->id;
       $job->uuid = $event->payload()["uuid"];
@@ -76,11 +85,15 @@ class FileUploadProcessJob implements ShouldQueue
       $data["job_id"] = $job->id;
       $data["job_uuid"] = $job->uuid;
       // save metadata to cache
-      $job->uploadId = $data['upload_id'];
-      $job->cache = new NativeCache();
-      $job->cache->set($job->uploadId, $data);
+      $job->processId = $data['process_id'];
+      $cache->set($job->processId, $data);
     });
     return $job;
+  }
+
+  public function getCache()
+  {
+    return $this->cache;
   }
 
   public function changePrefix(string $prefix)
@@ -120,9 +133,9 @@ class FileUploadProcessJob implements ShouldQueue
    */
   public function updateStatus(string $status, int $progress, array $data = []): void
   {
-    if (!$this->uploadId) return;
+    if (!$this->processId) return;
 
-    $metadata = $this->cache->getArray($this->uploadId);
+    $metadata = $this->cache->getArray($this->processId);
 
     $update = array_merge($metadata, [
       'status' => $status,
@@ -132,7 +145,7 @@ class FileUploadProcessJob implements ShouldQueue
 
     // TTL dinamis
     // $ttl = $status === 'completed' ? 300 : 3600;
-    $this->cache->set($this->uploadId, json_encode($update));
+    $this->cache->set($this->processId, json_encode($update));
   }
 
   /**
@@ -184,10 +197,10 @@ class FileUploadProcessJob implements ShouldQueue
     rmdir($dir);
   }
 
-  public function storeManifestRecord(WorkspaceManifest $wsManifest)
+  public function storeManifestRecord(WorkspaceManifest $wsManifest, int $workspaceId = 0)
   {
     if(!(Manifest::where('hash_tree_sha256', $wsManifest->hash_tree_sha256)->first(['id']))){
-      Manifest::create([
+      $fillable = [
         // workspace_id = null, berarti tidak terkait dengan worksapce
         'from_id' => $this->userId,
         'source' => $wsManifest->source,
@@ -197,7 +210,9 @@ class FileUploadProcessJob implements ShouldQueue
         'hash_tree_sha256' => $wsManifest->hash_tree_sha256,
         'storage_path' => $wsManifest->storage_path(),
         'tags' => $wsManifest->tags
-      ]);
+      ];
+      if($workspaceId || (int) $workspaceId > 0) $fillable['workspace_id'] = $workspaceId;
+      Manifest::create($fillable);
       return true;
     }
     return false;
@@ -267,12 +282,13 @@ class FileUploadProcessJob implements ShouldQueue
     $fileName = $metadata['file_name'];
     $uploadDir = $metadata['upload_dir'];
     $totalChunk = $metadata['total_chunks'];
+    $mtime = $metadata['file_mtime'];
     $this->filePath = $uploadDir . "/" . $fileName;
-    $this->uploadId = $metadata['upload_id'];
+    $this->processId = $metadata['process_id'];
     $startTime = microtime(true);
 
     $result = [
-      'upload_id' => $this->uploadId,
+      'process_id' => $this->processId,
       'file_path' => $this->filePath,
       'status' => 'processing',
       'files_processed' => 0,
@@ -287,6 +303,9 @@ class FileUploadProcessJob implements ShouldQueue
 
       // #1. merge chunked zip
       $this->mergeChunks($totalChunk, $uploadDir, $fileName);
+      Log::info("mtime adalah {$mtime}", []);
+      touch($this->filePath, $mtime); // 1764759214 
+      Log::info("setelah touced adalah " . filemtime($this->filePath), []);
 
       // #2. change into blob (create record of blob)
       $files = $this->scanDirectory($uploadDir);
@@ -311,11 +330,11 @@ class FileUploadProcessJob implements ShouldQueue
       $this->updateStatus('completed', 100, $result);
 
       // 🔑 Auto-cleanup jika sync mode atau sudah selesai
-      // $this->cache->delete($this->uploadId);
-      // if ($this->uploadId) {
-      //   $this->cache->cleanupUpload($this->uploadId, [
+      // $this->cache->delete($this->processId);
+      // if ($this->processId) {
+      //   $this->cache->cleanupUpload($this->processId, [
       //     'status' => 'completed',
-      //     'upload_id' => $this->uploadId,
+      //     'process_id' => $this->processId,
       //     'uploaded_chunks' => $totalChunk
       //   ]);
       // }
@@ -330,17 +349,17 @@ class FileUploadProcessJob implements ShouldQueue
       $this->updateStatus('failed', 0, $result);
 
       // Cleanup saat error
-      // $this->cache->delete($this->uploadId);
-      // if ($this->uploadId) {
-      //   $this->cache->cleanupUpload($this->uploadId, [
+      // $this->cache->delete($this->processId);
+      // if ($this->processId) {
+      //   $this->cache->cleanupUpload($this->processId, [
       //     'status' => 'failed',
-      //     'upload_id' => $this->uploadId,
+      //     'process_id' => $this->processId,
       //     'error' => $e->getMessage()          
       //   ]);
       // }
 
       Log::error("FileUploadProcessJob failed", [
-        'upload_id' => $this->uploadId,
+        'process_id' => $this->processId,
         'error' => $e->getMessage(),
         'trace' => $e->getTraceAsString(),
       ]);

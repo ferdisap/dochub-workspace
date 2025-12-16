@@ -48,8 +48,11 @@ export function route_upload_status_process(uploadId: string){
 export function route_upload_get_list(){
   return '/dochub/upload/list'; // POST
 }
-export function route_upload_make_workspace(){
-  return '/dochub/upload/make/workspace'; // POST
+export function route_upload_make_workspace(manifestId:string){
+  return `/dochub/upload/make/workspace/${manifestId}`; // POST
+}
+export function route_upload_make_workspace_status(manifestId:string){
+  return `/dochub/upload/make/workspace/status/${manifestId}`; // GET
 }
 
 /**

@@ -63,4 +63,20 @@ class Workspace
     }
     return false;
   }
+
+  public static function scanDirectory(string $dir): array
+  {
+    $files = [];
+    $iterator = new \RecursiveIteratorIterator(
+      new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS)
+    );
+
+    foreach ($iterator as $file) {
+      if ($file->isFile()) {
+        $relativePath = str_replace($dir . DIRECTORY_SEPARATOR, '', $file->getPathname());
+        $files[$relativePath] = $file->getPathname();
+      }
+    }
+    return $files;
+  }
 }

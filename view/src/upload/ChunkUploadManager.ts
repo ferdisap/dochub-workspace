@@ -15,6 +15,7 @@ interface ChunkMetadata {
   uploadId: string;
   fileName: string;
   fileSize: number;
+  fileMtime: number; // dalam detik, bukan milidetik
   chunkSize: number;
   totalChunks: number;
   uploadedChunks: number;
@@ -302,6 +303,7 @@ export class ChunkedUploadManager {
       uploadId: this.uploadId,
       fileName: file.name,
       fileSize: file.size,
+      fileMtime: Math.floor(file.lastModified / 1000),
       chunkSize: chunkSize,
       totalChunks: totalChunks,
       uploadedChunks: 0,
@@ -572,6 +574,7 @@ export class ChunkedUploadManager {
       body: JSON.stringify({
         upload_id: this.uploadId,
         file_name: this.metadata!.fileName,
+        file_mtime: this.metadata!.fileMtime,
       }),
     });
 

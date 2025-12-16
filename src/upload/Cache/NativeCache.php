@@ -214,16 +214,16 @@ class NativeCache implements Cacheable, LockContract, CacheCleanup
       $deleted = $this->store->forget($key);
 
       // Hapus file fisik jika ada (sama seperti RedisCleanupService)
-      if (isset($metadata['upload_id'])) {
+      if (isset($metadata['process_id'])) {
         $driverUpload = config('upload.driver') === 'tus' ? 'tus' : 'native'; // walau auto adalah file
-        $uploadDir = config("upload.driver.{$driverUpload}.root") . "/{$uploadId}";
-        if (is_dir($uploadDir)) {
-          $this->deleteDirectory($uploadDir);
+        $directory = $metadata['upload_dir'] ?? config("upload.driver.{$driverUpload}.root") . "/{$uploadId}";
+        if (is_dir($directory)) {
+          $this->deleteDirectory($directory);
         }
       }
 
       // Log::info("Cache upload cleaned up", [
-      //   'upload_id' => $uploadId,
+      //   'process_id' => $uploadId,
       //   'driver' => $driver ?? config('cache.default'),
       //   'reason' => $metadata['status'] ?? 'auto',
       //   'chunks' => $metadata['uploaded_chunks'] ?? 0,
@@ -232,7 +232,7 @@ class NativeCache implements Cacheable, LockContract, CacheCleanup
       return $deleted;
     } catch (\Exception $e) {
       Log::error("Cache cleanup failed", [
-        'upload_id' => $uploadId,
+        'process_id' => $uploadId,
         'driver' => $driver ?? config('cache.default'),
         'error' => $e->getMessage(),
       ]);

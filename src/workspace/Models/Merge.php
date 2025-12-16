@@ -5,7 +5,7 @@ namespace Dochub\Workspace\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-
+use Illuminate\Support\Str;
 
 class Merge extends Model
 {
@@ -26,6 +26,22 @@ class Merge extends Model
   ];
 
   protected $dates = ['merged_at'];
+
+  /**
+   * Override boot() method untuk secara otomatis menghasilkan UUID.
+   * Metode ini akan dipanggil sebelum Model dibuat.
+   */
+  protected static function boot()
+  {
+    parent::boot();
+
+    static::creating(function ($model) {
+      // Jika ID belum ada, isi dengan UUID.
+      if (! $model->getKey()) {
+        $model->{$model->getKeyName()} = (string) Str::uuid();
+      }
+    });
+  }
 
   // Relasi
   public function workspace(): BelongsTo

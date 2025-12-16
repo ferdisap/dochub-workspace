@@ -1,73 +1,350 @@
 <script setup lang="ts">
 	import { getFilename } from "../../helpers/uri";
-  import { route_file_delete, route_file_download, route_upload_get_list, route_upload_make_workspace } from "../../helpers/listRoute";
-  import { getCSRFToken } from "../../helpers/toDom";
-  import { ref, computed, onMounted } from "vue";
+	import {
+		route_file_delete,
+		route_file_download,
+		route_upload_get_list,
+		route_upload_make_workspace,
+		route_upload_make_workspace_status,
+	} from "../../helpers/listRoute";
+	import { getCSRFToken } from "../../helpers/toDom";
+	import { ref, computed, onMounted } from "vue";
 
 	// Tipe sesuai dengan respons Laravel
 	type TreeNodeType = "file" | "directory";
-	type TreeFlat = [path: string, type: TreeNodeType, hash:string, hashManifest:string, created_at?:string];
+	type TreeFlat = [
+		path: string,
+		type: TreeNodeType,
+		hash: string,
+		hashManifest: string,
+		created_at?: string,
+	];
 
 	const dummyTreeFlat: TreeFlat[] = [
 		// Root-level directories
-		["documents/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["images/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["reports/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["uploads/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["backups/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
+		[
+			"documents/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"images/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"reports/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"uploads/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"backups/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
 
 		// Root-level files
-		["README.md", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["config.json", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["manifest.bin", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
+		["README.md", "file", "abcdefghijklmn", "0", "2025-12-12T04:27:13.000000Z"],
+		[
+			"config.json",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"manifest.bin",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
 
 		// documents/
-		["documents/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'], // duplikat diizinkan (grouping tetap aman)
-		["documents/contract_v2.pdf.enc", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["documents/invoice_2025Q3.pdf.enc", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["documents/specs/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["documents/specs/api_v1.yaml", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["documents/specs/db_schema.sql", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["documents/drafts/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["documents/drafts/meeting_notes.txt", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["documents/drafts/proposal_v0.enc", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
+		[
+			"documents/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		], // duplikat diizinkan (grouping tetap aman)
+		[
+			"documents/contract_v2.pdf.enc",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"documents/invoice_2025Q3.pdf.enc",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"documents/specs/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"documents/specs/api_v1.yaml",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"documents/specs/db_schema.sql",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"documents/drafts/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"documents/drafts/meeting_notes.txt",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"documents/drafts/proposal_v0.enc",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
 
 		// images/
-		["images/logo.png", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["images/banner.jpg", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["images/icons/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["images/icons/favicon.ico", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["images/icons/social/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["images/icons/social/twitter.svg", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["images/icons/social/telegram.png", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
+		[
+			"images/logo.png",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"images/banner.jpg",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"images/icons/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"images/icons/favicon.ico",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"images/icons/social/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"images/icons/social/twitter.svg",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"images/icons/social/telegram.png",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
 
 		// reports/
-		["reports/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["reports/monthly/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["reports/monthly/january_2025.pdf", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["reports/monthly/february_2025.pdf.enc", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'], // encrypted
-		["reports/summary_2024.xlsx", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["reports/audit_log.bin.sig", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'], // signature file
+		[
+			"reports/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"reports/monthly/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"reports/monthly/january_2025.pdf",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"reports/monthly/february_2025.pdf.enc",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		], // encrypted
+		[
+			"reports/summary_2024.xlsx",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"reports/audit_log.bin.sig",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		], // signature file
 
 		// uploads/ (realistis: hasil upload user)
-		["uploads/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["uploads/user_123/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["uploads/user_123/file_a.bin.enc", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["uploads/user_123/metadata.json", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["uploads/user_456/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["uploads/user_456/report_final.pdf.enc", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["uploads/temp_upload_session_7a3b.bin", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'], // session chunk
+		[
+			"uploads/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"uploads/user_123/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"uploads/user_123/file_a.bin.enc",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"uploads/user_123/metadata.json",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"uploads/user_456/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"uploads/user_456/report_final.pdf.enc",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"uploads/temp_upload_session_7a3b.bin",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		], // session chunk
 
 		// backups/
-		["backups/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["backups/db_20251210.sql.gz", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["backups/keys/", "directory", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'],
-		["backups/keys/x25519_pubkey.bin", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'], // sesuai minat Anda
-		["backups/keys/chacha20_key.enc", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'], // encrypted key
-		["backups/keys/file_id_16b.bin", "file", 'abcdefghijklmn', "0", '2025-12-12T04:27:13.000000Z'], // 16-byte deterministic ID
+		[
+			"backups/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"backups/db_20251210.sql.gz",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"backups/keys/",
+			"directory",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		],
+		[
+			"backups/keys/x25519_pubkey.bin",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		], // sesuai minat Anda
+		[
+			"backups/keys/chacha20_key.enc",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		], // encrypted key
+		[
+			"backups/keys/file_id_16b.bin",
+			"file",
+			"abcdefghijklmn",
+			"0",
+			"2025-12-12T04:27:13.000000Z",
+		], // 16-byte deterministic ID
 	];
 
 	const treeFlat = ref<TreeFlat[]>(dummyTreeFlat);
+	const result = ref<null | {
+		type: "completed" | "failed" | "processing";
+		title: string;
+		message: string;
+		jobId?: string;
+	}>(null);
+
+	// result.value = {
+	//   "type": 'processing',
+	//   "title": 'FUFU',
+	//   "message": 'fafa',
+	//   "jobId": '0'
+	// };
 
 	// State UI
 	const expandedDirs = ref<Set<string>>(new Set(["/"])); // root selalu terbuka
@@ -106,60 +383,121 @@
 		return path.split("/").filter(Boolean).length - 1;
 	};
 
-  const downloadFile = (file:TreeFlat) => {
-    const endpoint = route_file_download(file[2]);
-    // Create a temporary link element
-    const link = document.createElement('a');
-    link.href = endpoint;
-    link.setAttribute('download', getFilename(file[0])); // The 'download' attribute is useful but the server response handles the name
-    // Append to the DOM (necessary for Firefox)
-    document.body.appendChild(link);
-    // Trigger the click
-    link.click();
-    // Clean up the element
-    document.body.removeChild(link);
-  }
-  const deleteFile = async (file:TreeFlat) => {
-    const index = treeFlat.value.indexOf(file);
-    if(index > -1){
-      const endpoint = route_file_delete(file[2], file[3]);
-      await fetch(endpoint,{
-        method: 'POST',
-        headers: {
-          "X-Requested-With": "XMLHttpRequest",
-          "X-CSRF-TOKEN": getCSRFToken(),
-          "Content-Type": "application/json",
-        }
-      }).then(response => response.json());
-      treeFlat.value.splice(index, 1);
-      alert(`File ${file[0]} is deleted`);
-    }
-  }
-  const toWorkspace = async (file:TreeFlat) => {
-    const endpoint = route_upload_make_workspace();
-    const result = await fetch(endpoint).then(response => response.json());
-    const workspaceName = result.workspace.name;
-    alert(`File ${file[0]} is added to workspace ${workspaceName}`);
-  }
+	const downloadFile = (file: TreeFlat) => {
+		const endpoint = route_file_download(file[2]);
+		// Create a temporary link element
+		const link = document.createElement("a");
+		link.href = endpoint;
+		link.setAttribute("download", getFilename(file[0])); // The 'download' attribute is useful but the server response handles the name
+		// Append to the DOM (necessary for Firefox)
+		document.body.appendChild(link);
+		// Trigger the click
+		link.click();
+		// Clean up the element
+		document.body.removeChild(link);
+		result.value = {
+			type: "completed",
+			title: "File Downloaded",
+			message: `${file[0]} is downloaded.`,
+			jobId: "0",
+		};
+	};
+	const deleteFile = async (file: TreeFlat) => {
+		const index = treeFlat.value.indexOf(file);
+		if (index > -1) {
+			const endpoint = route_file_delete(file[2], file[3]);
+			await fetch(endpoint, {
+				method: "POST",
+				headers: {
+					"X-Requested-With": "XMLHttpRequest",
+					"X-CSRF-TOKEN": getCSRFToken(),
+					"Content-Type": "application/json",
+				},
+			}).then((response) => response.json());
+			treeFlat.value.splice(index, 1);
+			result.value = {
+				type: "completed",
+				title: "File Deleted",
+				message: `${file[0]} is deleted.`,
+				jobId: "0",
+			};
+		}
+	};
+	const toWorkspace = async (file: TreeFlat) => {
+		const manifestId = file[3];
+		const endpoint = route_upload_make_workspace(manifestId);
+		// const result =
+		await fetch(endpoint, {
+			method: "POST",
+			headers: {
+				"X-Requested-With": "XMLHttpRequest",
+				"X-CSRF-TOKEN": getCSRFToken(),
+				"Content-Type": "application/json",
+			},
+		});
+		// .then((response) => response.json());
+		// if (result.status === "processing") {
+		// result.value = {
+		//   type: "processing",
+		//   title: "File is being processed to imported workspace",
+		//   message: `${file[0]} is deleted.`,
+		//   jobId: "0",
+		// };
+		// } else {
+		//   const workspaceName = result.workspace.name;
+		//   result.value = {
+		//     type: result.status,
+		//     title: "File is imported to workspace",
+		//     message: `${file[0]} is deleted.`,
+		//     jobId: "0",
+		//   };
+		//   alert(`File ${file[0]} is added to workspace ${workspaceName}`);
+		// }
+		result.value = {
+			type: 'processing',
+			title: "File is being imported to workspace",
+			message: `${file[0]} is processed.`,
+			jobId: "0",
+		};
+		await pollStatus(file);
+	};
 
-  onMounted(async () => {
-    // fetch list
-    const data = await fetch(route_upload_get_list(), {
-      method: 'POST',
-      headers: {
-        "X-Requested-With": "XMLHttpRequest",
-        "X-CSRF-TOKEN": getCSRFToken(),
-        "Content-Type": "application/json",
-      }
-    }).then(response => response.json());
-    treeFlat.value = data.list.map((l:any) => {
-      const hashManifest = l.hash_manifest;
-      const hashFile = l.hash_blob;
-      const path = l.path;
-      const created_at = l.created_at;
-      return [path, 'file', hashFile, hashManifest, created_at] as TreeFlat;
-    });
-  })
+	const pollStatus = async (file: TreeFlat) => {
+    const manifestId = file[3];
+		const interval = setInterval(async () => {
+			const stt = await fetch(
+				route_upload_make_workspace_status(manifestId)
+			).then((r) => r.json());
+			if (stt.status === "completed" || stt.failed) {
+				clearInterval(interval);
+				result.value = {
+					type: stt.status,
+					title: "Make Worksapce",
+					message: `Make workspace from uploaded ${file[0]} is done.`,
+					jobId: stt.job_id,
+				};
+			}
+		}, 2000);
+	};
+
+	onMounted(async () => {
+		// fetch list
+		const data = await fetch(route_upload_get_list(), {
+			method: "POST",
+			headers: {
+				"X-Requested-With": "XMLHttpRequest",
+				"X-CSRF-TOKEN": getCSRFToken(),
+				"Content-Type": "application/json",
+			},
+		}).then((response) => response.json());
+		treeFlat.value = data.list.map((l: any) => {
+			const hashManifest = l.hash_manifest;
+			const hashFile = l.hash_blob;
+			const path = l.path;
+			const created_at = l.created_at;
+			return [path, "file", hashFile, hashManifest, created_at] as TreeFlat;
+		});
+	});
 </script>
 
 <template>
@@ -174,6 +512,43 @@
 			<!-- Env badge (opsional, bisa dihilangkan atau di-props) -->
 			<div class="env-badge env-shared">
 				<span>📁 Shared Environment</span>
+			</div>
+
+			<div v-if="result" class="result" :class="result.type">
+				<div class="result-icon">
+					<svg
+						v-if="result.type === 'completed'"
+						xmlns="http://www.w3.org/2000/svg"
+						width="24"
+						height="24"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+					>
+						<polyline points="20 6 9 17 4 12"></polyline>
+					</svg>
+					<svg
+						v-else
+						xmlns="http://www.w3.org/2000/svg"
+						width="24"
+						height="24"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+					>
+						<circle cx="12" cy="12" r="10"></circle>
+						<line x1="12" y1="8" x2="12" y2="12"></line>
+						<line x1="12" y1="16" x2="12.01" y2="16"></line>
+					</svg>
+				</div>
+				<div class="result-content">
+					<h3>{{ result.title }}</h3>
+					<p>{{ result.message }}</p>
+					<div v-if="result.jobId" class="job-info">
+						<span>Job ID: {{ result.jobId }}</span>
+						<button @click="checkStatus" class="btn-sm">Check Status</button>
+					</div>
+				</div>
 			</div>
 
 			<!-- File List -->
@@ -208,7 +583,7 @@
 						v-show="isExpanded(dir) || dir === '/'"
 						class="pl-4 border-l-2 border-gray-100 ml-6"
 					>
-          <!-- file = [path, type, hash, hashManifest, created_at] -->
+						<!-- file = [path, type, hash, hashManifest, created_at] -->
 						<div
 							v-for="file in items"
 							:key="file[0]"
@@ -265,20 +640,21 @@
 							<!-- Action (opsional) -->
 							<button
 								v-if="file[1] === 'file'"
-                @click.stop="downloadFile(file)"
+								@click.stop="downloadFile(file)"
 								class="btn-sm blue opacity-0 group-hover:opacity-100 transition-opacity"
 							>
 								Download
 							</button>
 							<button
 								v-if="file[1] === 'file'"
-                @click.stop="deleteFile(file)"
+								@click.stop="deleteFile(file)"
 								class="btn-sm red opacity-0 group-hover:opacity-100 transition-opacity"
 							>
 								Delete
 							</button>
 							<button
 								v-if="file[1] === 'file'"
+								@click.stop="toWorkspace(file)"
 								class="btn-sm green opacity-0 group-hover:opacity-100 transition-opacity"
 							>
 								To Workspace

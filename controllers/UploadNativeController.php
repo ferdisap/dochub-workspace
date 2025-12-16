@@ -10,6 +10,7 @@ use Dochub\Workspace\Models\Manifest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Str;
 
 // jenis jenis status
 // uploading, processing, uploaded => di controller
@@ -93,7 +94,7 @@ class UploadNativeController extends UploadController
     if ($success) rename($chunkPathTmp, $chunkPath);
 
     $this->updateUploadMetadata($uploadId, $chunkId, [
-      'upload_id' => $uploadId,
+      'process_id' => $uploadId,
       'file_name' => $fileName,
       'file_size' => $fileSize,
       'total_chunks' => $totalChunks,
@@ -109,22 +110,35 @@ class UploadNativeController extends UploadController
     ]);
   }
 
+  private function convertToSecondsIfMilliseconds(int $timestamp)
+  {
+    if (!is_numeric($timestamp)) {
+      return throw new \Exception("Timestamp must be integer", 1);
+    }
+
+    // Cek panjang digit: 13 digit atau lebih dianggap milidetik
+    if (Str::length((string)$timestamp) >= 13) {
+      return floor($timestamp / 1000);
+    }
+
+    return (int) $timestamp;
+  }
+
   /**
    * POST /upload/process
    * Gabung chunk & proses
    */
   public function processUpload(Request $request)
   {
-    // untuk debug
-    // return response()->json([
-    //   'upload_id' => 'fufafa',
-    //   'job_id' => '0',
-    //   'status' => 'processing',
-    // ]);
+    // validate input
+
     $request->validate([
       'upload_id' => 'required|string',
       'file_name' => 'required|string',
+      'file_mtime' => 'required|integer|before_or_equal:now', // diambil dari Math.floor(file.lastModified / 1000); di js
     ]);
+    // $mtime = Carbon::createFromTimestamp($request->input('file_mtime'));
+    // touch($filePath, $mtime->timestamp);
 
     $uploadId = $request->upload_id;
 
@@ -138,6 +152,9 @@ class UploadNativeController extends UploadController
     if (!$this->check_progress($data)) {
       return response()->json(['error' => 'Chunk is not completely uploaded'], 422); // uncompressable content
     }
+
+    // set mtime
+    $data['file_mtime'] = $this->convertToSecondsIfMilliseconds((int) $request->input('file_mtime'));
 
     // set all request param to metadata    
     $data['tags'] = $request->get('tags') ?? null;
@@ -172,26 +189,6 @@ class UploadNativeController extends UploadController
         throw $th;
       }
     }
-
-    // Dispatch job untuk prodcution
-    // $job = ZipProcessJob::withId(json_encode($data), Auth::user()->id);
-    // $job = FileUploadProcessJob::withId(json_encode($data), Auth::user()->id); // file di upload dengan namepsace "upload/{$subpath}", bukan "workspace" di File model
-    // dispatch($job)->onQueue('uploads');
-    // $jobId = $job->id;
-    // untuk debug
-    // try {
-    //   // ZipProcessJob::dispatchSync(json_encode($data), Auth::user()->id);
-    //   FileUploadProcessJob::dispatchSync(json_encode($data), Auth::user()->id);
-    //   // set job id to metadata
-    //   $data = $this->cache->getArray($uploadId);
-    //   $data["job_id"] = 0;
-    //   // save metadata to cache
-    //   $this->cache->set($uploadId, $data);
-    // } catch (\Throwable $th) {
-    //   dd($th);
-    //   return;
-    // }
-
     return response()->json([
       'upload_id' => $uploadId,
       'job_id' => $jobId ?? $data['job_id'],
@@ -199,34 +196,6 @@ class UploadNativeController extends UploadController
       'status' => 'processing',
     ]);
   }
-
-  // public function tesCheckChunk(Request $request, string $uploadId, string $chunkId)
-  // {
-  //   $metadata = $this->cache->getArray($uploadId);
-  //   dd($metadata, $this->cache->driver());
-  //   dd($id, $chunkId);
-  // }
-  // public function tesJob()
-  // {
-  //   // $job = new ZipProcessJob('', Auth::user()->id, 1);
-  //   // dispatch($job->onQueue('uploads'));
-  //   // $job = ZipProcessJob::dispatch('fufufafa')->onQueue('uploads');
-  //   // // $job = ZipProcessJob::dispatch('fufufafa');
-  //   // $job = new ZipProcessJob('asa', Auth::user()->id, 1);
-  //   // Event::listen(JobQueued::class, function (JobQueued $event) use (&$jobId) {
-  //   //   $jobId = $event->id;
-  //   // });
-  //   // dispatch($job)->onQueue('uploads');
-  //   // $job = ZipProcessJob::dispatchWithId('', Auth::user()->id, 1)->onQueue('uploads');
-
-  //   // $job = ZipProcessJob::withId('', Auth::user()->id, 1);
-  //   // $pending = dispatch($job)->onQueue('uploads');
-  //   // dd($job);
-  //   $job = ZipProcessJob::withId('', Auth::id(), 1);
-  //   dispatch($job);
-  //   dd($job->id); // selalu berisi, baik chaining ataupun tidak
-  //   // dd($job, $job->getJob()->id);
-  // }
 
   private function check_progress(array $metadata): bool
   {

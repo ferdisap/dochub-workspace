@@ -57,7 +57,7 @@ class ManifestLocalStorage
       throw new \RuntimeException("Manifest not found: {$path}");
     }
     $manifestArray = json_decode(file_get_contents($fullPath), true);
-    return Manifest::create($manifestArray);
+    return Manifest::create($manifestArray, $path);
   }
 
   public function delete(string $path): void

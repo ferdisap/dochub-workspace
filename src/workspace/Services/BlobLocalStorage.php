@@ -468,7 +468,7 @@ class BlobLocalStorage
         }
 
         // agar file tidak bisa di replace atau rewrite (izin baca saja)
-        Blob::setLocalReadOnly($blobPath);
+        // Blob::setLocalReadOnly($blobPath); // dilakukan di Blob class, bukan di sini
       },
       Config::get('lock.default_timeout_ms', 30000)
     );

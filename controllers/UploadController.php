@@ -2,6 +2,8 @@
 
 namespace Dochub\Controller;
 
+use Dochub\Job\MakeWorkspaceFromZipJob;
+use Dochub\Upload\Cache\NativeCache;
 use Dochub\Upload\Cache\RedisCache;
 use Dochub\Upload\EnvironmentDetector;
 use Dochub\Upload\Models\Resources\Upload as ResourcesUpload;
@@ -11,11 +13,13 @@ use Dochub\Workspace\Enums\ManifestSourceType;
 use Dochub\Workspace\Models\Blob as ModelsBlob;
 use Dochub\Workspace\Models\File;
 use Dochub\Workspace\Models\Manifest;
+use Dochub\Workspace\Models\Workspace;
 use Dochub\Workspace\Services\BlobLocalStorage;
 use Dochub\Workspace\Services\ManifestLocalStorage;
 use Exception;
 use Illuminate\Container\Attributes\Auth;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class UploadController
 {
@@ -103,35 +107,56 @@ class UploadController
     );
   }
 
+  private function deletingFile(Manifest $manifest, ModelsBlob $blob)
+  {
+    $files = $blob->files;
+    $hash = $blob->hash;
+
+    $fileModelDeleted = [];
+    if ($files->count() > 0) {
+      $wsBlob = new Blob(); // Ws Blob
+      // jika ada di storage
+      if ($wsBlob->isExist($hash)) {
+        // hapus blob model dan manifest model
+        if ($blob->delete()) {
+          if ($manifest->delete()) {
+            // hapus blob storage
+            if ($wsBlob->destroy($hash)) {
+              // delete model file
+              foreach ($files as $fileModel) {
+                if ($fileModel->delete()) {
+                  $fileModelDeleted[] = $fileModel;
+                }
+              }
+              return true;
+            } else {
+              // recreate $manifest model deleted
+              Log::info("Failed to delete wsBlob", []);
+            }
+          } else {
+            // recreate $blob model deleted
+            Log::info("Failed to delete manifest model", []);
+          }
+        } else {
+          // recreate file Model deleted here
+          Log::info("Failed to delete blob model", []);
+        }
+      }
+    }
+    return false;
+  }
+
   public function deleteFile(Request $request, Manifest $manifest, ModelsBlob $blob)
   {
     // validate, jika manifest terhubung ke merges, maka tidak bisa dihapus di sini
-    if($manifest->merges()->count() > 1){
+    if ($manifest->merges()->count() > 1) {
       abort(403, "Forbiden to delete file");
     }
 
-    $files = $blob->files; // File Model
-    $hash = $blob->hash;
-
-    // jika ada model file
-    if($files->count() > 0){
-      $wsBlob = new Blob(); // Ws Blob
-      // jika ada di storage
-      if($wsBlob->isExist($hash)){
-        // delete model file
-        foreach ($files as $fileModel) {
-          $fileModel->delete();
-        }
-        // hapus blob model dan manifest model
-        if($blob->delete() && $manifest->delete()){
-          // hapus blob storage
-          if($wsBlob->destroy($hash)){
-            return response()->json([
-              'blob' => $blob
-            ]);
-          }
-        }
-      }
+    if ($this->deletingFile($manifest, $blob)) {
+      return response()->json([
+        'blob' => $blob
+      ]);
     }
     abort(500, "Failed to delete file");
   }
@@ -144,8 +169,109 @@ class UploadController
     ]);
   }
 
-  public function makeWorkspace(Request $request, Manifest $manifest) {
-    dd($manifest);
+  public function makeWorkspace(Request $request, Manifest $manifest)
+  {
+    // validate the total of files in manifest must be 1
+    $wsManifest = ($manifest->content);
+    if (count($wsManifest->files) != 1) {
+      return response("Files must be one ea, actual " . count($wsManifest->files), 400);
+    }
+
+    // validasi mime (harus zip)
+    $wsFile = $wsManifest->files[0];
+    $blob = ModelsBlob::findOrFail($wsFile->sha256);
+    if (!in_array($blob->mime_type, ['application/zip', 'application/gzip'])) {
+      return response("Files must be zip formated, actual " . $blob->mime_type, 400);
+    }
+
+    // validasi workspace name
+    $workspaceName = MakeWorkspaceFromZipJob::getWorkspaceNameFromWsFile($wsFile);
+    if (Workspace::where('name', $workspaceName)->first('id')) {
+      return response("Files name exist, {$workspaceName}", 400);
+    }
+
+    $processId = $wsManifest->hash_tree_sha256;
+    $filesize = $wsManifest->total_size_bytes;
+    if ($filesize > (1 * 1024 * 1024)) {
+      $job = MakeWorkspaceFromZipJob::withId($manifest->toJson(), $request->user()->id);
+      dispatch($job)->onQueue('making-workspace-from-upload');
+      $jobId = $job->id;
+    } else {
+      $cache = new NativeCache();
+      $dataManifestModelSerialized = $manifest->toArray();
+      $data['process_id'] = $processId;
+      $data['manifest_model'] = $dataManifestModelSerialized;
+      // $cache->set($processId, json_encode($data));
+
+      MakeWorkspaceFromZipJob::dispatchSync(json_encode($data), $request->user()->id);
+      $processId = $manifest->hash_tree_sha256;
+      // set job id to metadata
+      $data = $cache->getArray($processId);
+      $data["job_id"] = 0;
+      // save metadata to cache
+      $cache->set($processId, $data);
+    }
+
+    return response()->json([
+      'process_id' => $processId,
+      'job_id' => $jobId ?? $data['job_id'],
+      // 'job_uuid' => $jobUuId ?? '', // jika perlu uuid
+      'status' => 'processing',
+    ]);
+  }
+
+  /**
+   * GET /upload/{id}/status
+   * 
+   * 🔑 Tambahkan auto-cleanup jika sudah selesai
+   */
+  public function getMakeWorkspaceStatus(Request $request, string $id)
+  {
+    $cache = new NativeCache();
+    $data = $cache->getArray($id);
+
+    // dd($data);
+    if (count($data) < 1) {
+      return response()->json(['error' => 'Process not found'], 404);
+    }
+
+    if ($data['status'] !== 'completed') {
+      return response()->json(['error' => 'Making workspace still in progress'], 422); // uncompressable content
+    }
+
+    $manifestModel = Manifest::find($data['manifest_model']['id']);
+    
+    if(isset($data['blob_model']['hash'])){
+      $blobModel = ModelsBlob::find($data['blob_model']['hash']);
+      
+      // 🔑 Auto-cleanup dari cache jika sudah selesai
+      // $cleaned = true; // untuk debut, sehingga tidak dihapus (overwrite)
+      $cleaned = $cache->cleanupIfCompleted($id, $data); // sebenernya ngapus file uploadan (chunk), jadi kita tambahkan script untuk hapus file manual
+      
+      $data_return = $data;
+      unset($data_return['blob_model']);
+      unset($data_return['manifest_model']);
+  
+      if ($cleaned) {
+        $deleted = $this->deletingFile($manifestModel, $blobModel);
+        if($deleted){
+          return response()->json([
+            'process_id' => $id,
+            'job_id' => $data['job_id'],
+            'status' => $data['status'],
+            'data' => $data,
+          ]);
+        }
+      }
+    }
+
+    // Return status normal
+    return response()->json([
+      'process_id' => $id,
+      'status' => 'processing',
+      'job_id' => $data['job_id'] ?? null,
+      'data' => $data,
+    ]);
   }
 
   private function isRedisAvailable(): bool

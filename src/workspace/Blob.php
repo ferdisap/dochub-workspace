@@ -62,14 +62,14 @@ class Blob
           continue;
         }
         
+        $mtime = filemtime($filePath);
         $filesize = filesize($filePath);
-        // $mtime = filemtime($filePath);
 
-        // if($filePath && $mtime){
         if($filePath){
           $hash = $this->blobStorage->store($filePath);
           $blobPath = $this->blobStorage->getBlobPath($hash);
-          $mtime = filemtime($blobPath);
+          @touch($blobPath, $mtime);
+          self::setLocalReadOnly($blobPath);
           $processed++;
   
           $total_size_bytes += $filesize;

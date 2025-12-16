@@ -14,7 +14,7 @@ class Manifest
 {
   public string $hash_tree_sha256;
 
-  protected string $storagePath = ''; // jika tidak ada maka berarti belum dibuat
+  // protected string $storagePath = ''; // jika tidak ada maka berarti belum dibuat
 
   public string | null $tags = null;
 
@@ -31,11 +31,12 @@ class Manifest
     public int $total_files,
     public int $total_size_bytes,
     public array $files, // berisi WsFile 
+    protected string $storage_path = '' // jika tidak ada maka berarti belum dibuat
   ) {
     $this->hash_tree_sha256 = self::hash($this->files);
   }
 
-  public static function create(array $manifestArray) {
+  public static function create(array $manifestArray, $storage_path = '') {
     $source = $manifestArray["source"];
     $version = $manifestArray["version"];
     $total_files = $manifestArray["total_files"];
@@ -50,6 +51,7 @@ class Manifest
       $total_files,
       $total_size_bytes,
       $files,
+      $storage_path,
     );
   }
 

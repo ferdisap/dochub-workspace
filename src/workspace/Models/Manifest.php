@@ -45,7 +45,7 @@ class Manifest extends Model
   protected $table = "dochub_manifests";
 
   protected $fillable = [
-    // 'workspace_id',
+    'workspace_id',
     'from_id',
     'source',
     'version',
@@ -152,5 +152,23 @@ class Manifest extends Model
     return $this->version === Manifest::where('source', $this->source)
       ->latest('version')
       ->value('version');
+  }
+
+  public function toArray()
+  {
+    return [
+      'id' => $this->id,
+      'workspace_id' => $this->workspace_id,
+      'from_id' => $this->from_id,
+      'source' => $this->source,
+      'version' => $this->version,
+      'total_files' => $this->total_files,
+      'total_size_bytes' => $this->total_size_bytes,
+      'hash_tree_sha256' => $this->hash_tree_sha256,
+      'storage_path' => $this->storage_path,
+      'tags' => $this->tags,
+      'created_at' => $this->created_at,
+      'updated_at' => $this->updated_at,
+    ];
   }
 }

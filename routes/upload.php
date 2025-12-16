@@ -24,7 +24,8 @@ Route::prefix('dochub')->middleware([
   Route::get('/upload/{id}/status', [UploadNativeController::class, 'getUploadStatus'])->middleware('auth')->name('dochub.upload.status');
   Route::delete('/upload/{id}/delete', [UploadNativeController::class, 'deleteUpload'])->middleware('auth')->name('dochub.upload.delete');
   // cast to workspace
-  Route::post('/upload/make/workspace', [UploadController::class, 'makeWorkspace'])->middleware('auth')->name('dochub.upload.make.workspace');
+  Route::post('/upload/make/workspace/{manifest:hash_tree_sha256}', [UploadController::class, 'makeWorkspace'])->middleware('auth')->name('dochub.upload.make.workspace');
+  Route::get('/upload/make/workspace/status/{processId}', [UploadController::class, 'getMakeWorkspaceStatus'])->middleware('auth')->name('dochub.upload.make.workspace');
 
   // Route::get('/tes/chunk/{uploadId}/{chunkId}', [UploadNativeController::class, 'tesCheckChunk']);
 

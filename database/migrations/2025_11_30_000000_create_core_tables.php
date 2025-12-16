@@ -44,7 +44,7 @@ return new class extends Migration
       $table->timestamp('merged_at');
       $table->timestamps();
 
-      $table->foreign('prev_merge_id')->references('id')->on('dochub_merges')->onDelete('set null');
+      // $table->foreign('prev_merge_id')->references('id')->on('dochub_merges')->onDelete('set null');
     });
 
     // Merge Session
@@ -53,13 +53,13 @@ return new class extends Migration
       $table->foreignId('target_workspace_id'); //->constrained('dochub_workspaces');
       $table->foreignId('initiated_by_user_id'); //->constrained('users');
       // $table->foreignId('result_merge_id')->nullable(); //->constrained('dochub_merges');
-      $table->foreignId('result_merge_id'); //->constrained('dochub_merges');
+      $table->string('result_merge_id',36); //->constrained('dochub_merges');
       $table->string('source_identifier'); // e.g., 'remote:client-abc', 'upload:20251126-abc.zip', 'rollback:user_id:merge_id
       $table->string('source_type')->default('remote'); // 'remote', 'upload', 'manual', 'rollback
       $table->timestamp('started_at');
       $table->timestamp('completed_at')->nullable();
       $table->string('status')->default('pending');  // pending, scanning, conflicts, resolved, applied, failed
-      $table->json('metadata')->nullable();
+      $table->json('metadata')->nullable(); // // info dari third-party: version, timestamp, etc.
       $table->timestamps();
     });
 
@@ -102,8 +102,8 @@ return new class extends Migration
       $table->timestamps();
 
       // $table->foreign('merge_id')->references('id')->on('dochub_merges')->onDelete('cascade');
-      $table->foreign('blob_hash')->references('hash')->on('dochub_blobs')->onDelete('restrict');
-      $table->foreign('old_blob_hash')->references('hash')->on('dochub_blobs')->onDelete('set null');
+      // $table->foreign('blob_hash')->references('hash')->on('dochub_blobs')->onDelete('restrict');
+      // $table->foreign('old_blob_hash')->references('hash')->on('dochub_blobs')->onDelete('set null');
     });
   }
 

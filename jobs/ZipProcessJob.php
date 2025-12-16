@@ -29,6 +29,10 @@ use TusPhp\Cache\Cacheable;
 // uploading, processing, uploaded => di controller
 // processing, completed, failed => di process zip job
 
+/**
+ * @deprecated
+ * Tidak dipakai ketika ngupload file
+ */
 class ZipProcessJob extends FileUploadProcessJob implements ShouldQueue
 {
   use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
