@@ -4,7 +4,10 @@
  * ----------------
  */
 export function route_encryption_search_user(query: string|null = null) {
-  return `/dochub/encryption/get/users` + (query ? `?q_mail=${query}` : '');
+  return `/dochub/encryption/get/users` + (query ? `?q_mail=${query}` : ''); // GET
+}
+export function route_encryption_get_user() {
+  return `/dochub/encryption/get/user`; // GET
 }
 export function route_encryption_download_file(fileId: string) {
   return `/dochub/encryption/download-file/${fileId}`;

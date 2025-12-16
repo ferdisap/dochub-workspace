@@ -6,10 +6,20 @@
 		bytesToBase64,
 		deriveX25519KeyPair,
 	} from "../ferdi-encryption";
-	import { clearDB, erase, eraseKEK, readLocal, storeLocal } from "./localStoreKey";
-  import { fetchPublicKey, getPrivateKey } from "./key";
-import { getCSRFToken } from "view/src/helpers/toDom";
-import { route_encryption_register_publicKey, route_encryption_search_user } from "view/src/helpers/listRoute";
+	import {
+		clearDB,
+		erase,
+		eraseKEK,
+		readLocal,
+		storeLocal,
+	} from "./localStoreKey";
+	import { fetchPublicKey, getPrivateKey } from "./key";
+	import { getCSRFToken } from "../../helpers/toDom";
+	import {
+    route_encryption_get_user,
+		route_encryption_register_publicKey,
+		route_encryption_search_user,
+	} from "../../helpers/listRoute";
 
 	const userId = ref(null);
 	const passphrase = ref<string>("");
@@ -20,65 +30,67 @@ import { route_encryption_register_publicKey, route_encryption_search_user } fro
 	const error = ref<string>("");
 	const success = ref<string>("");
 
+	async function hasKey() {
+		await fetchPkKey64();
+		if (await fetchPbKey64()) {
+			return true;
+		} else {
+			throw new Error("No private and public key you have.");
+		}
+	}
+
 	async function generateKeys() {
-    // eraseKEK(); // cukup menghapus KEK saja
-    // erase();
-    // clearDB();
-    // console.log(await readLocalPrivateKey());
-    // console.log(await readServerPublicKey());
-    // return;
 		error.value = "";
 		success.value = "";
 
 		try {
-			await readLocalPrivateKey();
-      await readServerPublicKey();
-			error.value = "You have generated the key";
+			await hasKey();
+			error.value = "Your existing Private and Publickey still available";
 			loading.value = false;
-      return;
-		} catch (e) {
-			if (!userId.value) {
-				try {
-					await fetch(route_encryption_search_user()).then(async (response) => {
-						const data = await response.json();
-						userId.value = data.user.email;
-					});
-				} catch (e) {
-					error.value = "User must logged in";
-					throw e;
-				}
-			}
-			if (!passphrase.value || !passphraseConfirmation.value) {
-				error.value = "Passphrase is required";
-				return;
-			}
+			return;
+		} catch (e) {}
 
-			if (passphraseConfirmation.value !== passphrase.value) {
-				error.value = "Passphrase must confirmed";
-				return;
-			}
-
-			loading.value = true;
+		if (!userId.value) {
 			try {
-				const { privateKey: pvKey, publicKey: pbKey } =
-					await deriveX25519KeyPair(passphrase.value, userId.value!);
-				privateKey.value = bytesToBase64(pvKey);
-				publicKey.value = bytesToBase64(pbKey);
-				console.log(privateKey.value);
-				console.log(publicKey.value);
-				success.value = "Keys generated successfully!";
-			} catch (e) {
-				error.value = "Failed to generate keys";
+				await fetch(route_encryption_get_user()).then(async (response) => {
+					const data = await response.json();
+					userId.value = data.user.email;
+				});
+			} catch (e:any) {
+				error.value = e.message;
+				throw e;
 			}
-			loading.value = false;
 		}
+		if (!passphrase.value || !passphraseConfirmation.value) {
+			error.value = "Passphrase is required";
+			return;
+		}
+
+		if (passphraseConfirmation.value !== passphrase.value) {
+			error.value = "Passphrase must confirmed";
+			return;
+		}
+
+		loading.value = true;
+		try {
+			const { privateKey: pvKey, publicKey: pbKey } = await deriveX25519KeyPair(
+				passphrase.value,
+				userId.value!
+			);
+			privateKey.value = bytesToBase64(pvKey);
+			publicKey.value = bytesToBase64(pbKey);
+			success.value = "Keys generated successfully!";
+		} catch (e) {
+			error.value = "Failed to generate keys";
+		}
+		loading.value = false;
 	}
 
 	async function storeKeys() {
-    loading.value = true;
+		loading.value = true;
 		await storeServerPublicKey();
 		storeLocalPrivateKey();
-    loading.value = false;
+		loading.value = false;
 		success.value = "Public and Private key is stored.";
 	}
 
@@ -99,20 +111,26 @@ import { route_encryption_register_publicKey, route_encryption_search_user } fro
 		return response.ok ? true : false;
 	}
 
-	async function readServerPublicKey(): Promise<string | undefined> {
-		success.value = "";
-		loading.value = true;
+	async function fetchPbKey64() {
 		const response = await fetchPublicKey();
 		let pbKey64 = undefined;
 		if (response.ok) {
 			const data = await response.json();
 			const publicKeyBase64 = data.key.public_key;
-			publicKey.value = publicKeyBase64;
 			pbKey64 = publicKeyBase64;
-			success.value = `Your public key is ${publicKeyBase64}`;
+		}
+		return pbKey64;
+	}
+
+	async function readServerPublicKey(): Promise<string | undefined> {
+		success.value = "";
+		loading.value = true;
+		let pbKey64 = undefined;
+		if ((pbKey64 = await fetchPbKey64())) {
+      publicKey.value = pbKey64;
+			success.value = `Your public key is ${pbKey64}`;
 		} else {
-			publicKey.value = "";
-			success.value = "Fail to load public key";
+			error.value = "Fail to load public key";
 		}
 		loading.value = false;
 		return pbKey64;
@@ -125,10 +143,19 @@ import { route_encryption_register_publicKey, route_encryption_search_user } fro
 		}
 	}
 
+  async function fetchPkKey64(){
+    const pKey = await getPrivateKey();
+		return bytesToBase64(pKey);
+  }
+
 	async function readLocalPrivateKey() {
-		const pKey = await getPrivateKey();
-		privateKey.value = bytesToBase64(pKey);
-		return pKey;
+		try {
+			privateKey.value = await fetchPkKey64();
+      success.value = `Your private key is ${privateKey.value}`;
+			return privateKey.value;
+		} catch (err: any) {
+			error.value = err.message;
+		}
 	}
 </script>
 
@@ -186,7 +213,7 @@ import { route_encryption_register_publicKey, route_encryption_search_user } fro
 			</div>
 			<!-- private key -->
 			<div class="mt-6">
-				<h3 class="font-semibold">Private Key (stored in browser)</h3>
+				<h3 class="font-semibold">Private Key (stored in local)</h3>
 				<p class="break-all">{{ privateKey ? privateKey : "-" }}</p>
 			</div>
 			<div class="flex justify-center">

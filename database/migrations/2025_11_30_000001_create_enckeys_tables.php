@@ -12,7 +12,7 @@ return new class extends Migration
     Schema::create('dochub_encryption_keys', function (Blueprint $table) {
       $table->id();
       $table->foreignId('user_id'); //->constrained('users');
-      $table->string('public_key'); // base64 string
+      $table->string('public_key',256); // base64 string
       $table->timestamps();
     });
   }
