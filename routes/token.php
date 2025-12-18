@@ -14,7 +14,7 @@ Route::prefix('dochub')->middleware([
   'throttle:100,1' // 100 chunk/menit
 ])->group(function () {
   // untuk mendapatkan token sebelum aksess dochub
-  Route::get('/token/mine', [TokenController::class, 'getSavedToken']);
+  Route::get('/token/mine', [TokenController::class, 'getSavedToken']); // Jika third party maka harus akses dulu first party lalu buka dashboard lalu tempelkan access token manual di third party melalui UI nya sendiri
   // create (register) new token
   Route::post('/token/create', [TokenController::class, 'createToken']);
   // get list all token

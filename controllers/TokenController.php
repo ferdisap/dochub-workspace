@@ -79,12 +79,24 @@ class TokenController
   {
     $provider = $request->input('provider') ?? env('APP_URL');
     $recordSaved = SavedToken::where('provider', $provider)
-                    ->where('user_id', $request->user()->id)
-                    ->first();
+      ->where('user_id', $request->user()->id)
+      ->first();
+    $expInMinutes = now()->diffInMinutes($recordSaved->expires_at, false); // expires_at harus dalam carbon "2025-12-15T07:28:31.000000Z" => Carbon::parse($expiresAt); lalu diubah menjadi Unix Timestamp (detik) (integer)
     $recordSaved->makeHidden(['id', 'token_id', 'updated_at', 'created_at', 'user_id']); // only 'refresh_token', 'access_token', 'expires_at', 'provider'
     return response()->json([
       'token' => $recordSaved
-    ]);
+    ])
+      ->cookie(
+        'x-dochub-token',
+        $recordSaved->access_token,
+        $expInMinutes,                    // minutes
+        '/',
+        null,
+        true,                       // secure
+        true,                       // http-only
+        false,
+        'Strict'
+      );
   }
 
   public function deleteToken(Request $request, AccessToken $token)

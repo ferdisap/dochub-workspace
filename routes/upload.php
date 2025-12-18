@@ -26,7 +26,8 @@ Route::prefix('dochub')->middleware([
   // cast to workspace
   Route::post('/upload/make/workspace/{manifest:hash_tree_sha256}', [UploadController::class, 'makeWorkspace'])->middleware('auth')->name('dochub.upload.make.workspace');
   Route::get('/upload/make/workspace/status/{processId}', [UploadController::class, 'getMakeWorkspaceStatus'])->middleware('auth')->name('dochub.upload.make.workspace');
-
+  // delete uploaded file
+  Route::post('/file/delete/{manifest:hash_tree_sha256}/{blob:hash}', [UploadController::class, 'deleteFile'])->middleware('auth')->withoutScopedBindings()->name('dochub.file.delete'); // harus dipasang withoutScopedBindings() karena ada dua model tanpa saling berhubungan langsung
   // Route::get('/tes/chunk/{uploadId}/{chunkId}', [UploadNativeController::class, 'tesCheckChunk']);
 
   // Route::get("/tes", [UploadNativeController::class, 'tesJob']);
