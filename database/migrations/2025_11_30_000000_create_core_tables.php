@@ -12,7 +12,7 @@ return new class extends Migration
     Schema::create('dochub_workspaces', function (Blueprint $table) {
       $table->id();
       $table->foreignId('owner_id'); //->constrained('users');
-      $table->string('name')->unique();
+      $table->string('name',191)->unique();
       $table->string('visibility')->default('private');
       $table->softDeletes();
       $table->timestamps();
@@ -91,11 +91,12 @@ return new class extends Migration
       // Jika action = 'deleted' → hapus file dari workspace live.
       // Jika action = 'added' → abaikan (karena di M2 belum ada).
       // Jika action = 'updated' → symlink blobs/{$file->blob_hash} ke $path.
-      $table->string('action')->default('updated'); // added, updated, deleted, unchanged
+      $table->string('action')->default('added'); // added, updated, deleted
       $table->unsignedBigInteger('size_bytes');
       $table->timestamp('file_modified_at'); // mtime dari file asli
 
-      $table->unique(['merge_id', 'relative_path']);
+      // $table->unique(['merge_id', 'relative_path']);
+      // $table->unique(['workspace_id', 'relative_path']);
       $table->index(['workspace_id', 'relative_path']);
       $table->index('blob_hash');
       $table->index('old_blob_hash');

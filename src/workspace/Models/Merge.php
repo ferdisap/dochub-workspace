@@ -27,6 +27,10 @@ class Merge extends Model
 
   protected $dates = ['merged_at'];
 
+  protected $casts = [
+    'merged_at' => 'datetime'
+  ];
+
   /**
    * Override boot() method untuk secara otomatis menghasilkan UUID.
    * Metode ini akan dipanggil sebelum Model dibuat.

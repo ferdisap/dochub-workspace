@@ -21,6 +21,12 @@ class Workspace extends Model
     'visibility'
   ];
 
+  /** menghapus semua file (bukan hanya aktif file) di db*/
+  public function deleteAllFiles()
+  {
+    File::where('workspace_id', $this->id)->delete();
+  }
+
   /** user */
   public function owner()
   {
@@ -28,9 +34,14 @@ class Workspace extends Model
   }
 
   /** mengambil semua file */
+  public function allFiles()
+  {
+    return $this->hasMany(File::class, 'workspace_id');
+  }
+
+  /** mengambil files yang aktif berdasarkan merge. eg: jika file rollback maka tidak ada mergenya*/
   public function files()
   {
-    // return $this->hasMany(File::class, 'workspace_id');
     return $this->hasManyThrough(
       File::class,
       Merge::class,
@@ -40,19 +51,56 @@ class Workspace extends Model
       'id'
     )->whereNotNull('merge_id');
   }
-  /** mengambil semua merge */
+
+  public function sessions()
+  {
+    return $this->hasMany(MergeSession::class, 'target_workspace_id');
+  }
+
+  /** 
+   * mengambil semua merge 
+   * relasi merge belum tentu didapat karena seperti rolllback, yang membuat workspace baru, tidak ada merge nya. 
+   * Jadi mengakses merge harus menggunakan MergeSession dan ambil result_merge_id nya
+   */
   public function merges()
   {
-    return $this->hasMany(Merge::class, 'workspace_id');
+    // return $this->hasMany(Merge::class, 'workspace_id');
+    return $this->hasManyThrough(
+      Merge::class,       // Model Akhir yang ingin dituju
+      MergeSession::class,     // Model Perantara
+      'target_workspace_id',     // Foreign key pada tabel Session (merujuk ke Workspace)
+      'id',               // Foreign key pada tabel Merge (biasanya id) dalam context workspace atau PK di tabel merges (yang ditunjuk oleh result_merge_id)
+      'id',               // Local key pada tabel Workspace
+      'result_merge_id'   // Local key pada tabel Session (yang menyimpan ID Merge)
+    );
   }
-  /** latest merge */
+  /** latest and olderst merge */
+  public function oldestMerge()
+  {
+    // return $this->hasOne(Merge::class, 'workspace_id')->oldest('merged_at');
+    return $this->hasOneThrough(
+      Merge::class,           // Model Tujuan
+      MergeSession::class,         // Model Perantara
+      'target_workspace_id',  // FK di tabel sessions (menunjuk ke workspaces)
+      'id',                   // PK di tabel merges (ditunjuk oleh sessions)
+      'id',                   // PK di tabel workspaces
+      'result_merge_id'       // FK di tabel sessions (menunjuk ke merges)
+    )
+      ->oldest('dochub_merges.merged_at'); // Mengambil yang paling baru berdasarkan created_at
+  }
+
   public function latestMerge()
   {
-    try {
-      return $this->merges()->latest('merged_at')->first();
-    } catch (\Throwable $th) {
-      return null;
-    }
+    // return $this->hasOne(Merge::class, 'workspace_id')->latest('merged_at');
+    return $this->hasOneThrough(
+      Merge::class,           // Model Tujuan
+      MergeSession::class,         // Model Perantara
+      'target_workspace_id',  // FK di tabel sessions (menunjuk ke workspaces)
+      'id',                   // PK di tabel merges (ditunjuk oleh sessions)
+      'id',                   // PK di tabel workspaces
+      'result_merge_id'       // FK di tabel sessions (menunjuk ke merges)
+    )
+      ->latest('dochub_merges.merged_at'); // Mengambil yang paling baru berdasarkan created_at
   }
 
   /**

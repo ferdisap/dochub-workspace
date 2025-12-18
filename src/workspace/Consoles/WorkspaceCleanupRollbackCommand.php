@@ -6,6 +6,7 @@ use Dochub\Workspace\Models\File;
 use Dochub\Workspace\Models\MergeSession;
 use Dochub\Workspace\Models\Workspace;
 use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 use function Illuminate\Support\now;
@@ -30,27 +31,14 @@ class WorkspaceCleanupRollbackCommand extends Command
       // Cari workspace rollback berdasarkan:
       // 1. Nama mengandung pola rollback
       // 2. Ada session dengan source_type = 'rollback'
-      $rollbackWorkspaces = Workspace::where(function ($query) {
-        $query->where('name', 'like', '%-rollback-%')
-          ->orWhere('name', 'like', '%-restore-%')
-          ->orWhere('name', 'like', '%-copy-%');
-      })->where('created_at', '<', $cutoffDate)
-        ->withCount('files as file_count')
-        ->get();
+      $candidates = Workspace::whereHas('sessions', function($query){
+        $query->where('source_type', 'rollback');
+      })
+      // ->where('created_at', '<', $cutoffDate)
+      ->withCount('allFiles as file_count')
+      ->get();
 
-      $candidates = [];
-      foreach ($rollbackWorkspaces as $ws) {
-        $isRollback = MergeSession::where([
-          'target_workspace_id' => $ws->id,
-          'source_type' => 'rollback'
-        ])->exists();
-
-        if ($isRollback) {
-          $candidates[] = $ws;
-        }
-      }
-
-      if (empty($candidates)) {
+      if ($candidates->count() < 1) {
         if ($isJson) {
           $this->outputJson(['message' => 'Tidak ada workspace rollback yang ditemukan']);
         } else {
@@ -60,14 +48,14 @@ class WorkspaceCleanupRollbackCommand extends Command
       }
 
       // Hitung total
-      $totalSize = collect($candidates)->sum(function ($ws) {
-        return $ws->files->sum('size_bytes');
+      $totalSize = $candidates->sum(function ($ws) {
+        return $ws->allFiles->sum('size_bytes');
       });
 
       if ($isJson) {
         $data = [
           'days' => $days,
-          'candidates' => collect($candidates)->map(fn($ws) => [
+          'candidates' => $candidates->map(fn($ws) => [
             'id' => $ws->id,
             'name' => $ws->name,
             'created_at' => $ws->created_at->toIso8601String(),
@@ -91,12 +79,12 @@ class WorkspaceCleanupRollbackCommand extends Command
       $this->info("🗑️  Workspace Rollback yang Ditemukan (> {$days} hari)");
       $this->table(
         ['ID', 'Nama', 'Dibuat', 'File', 'Ukuran'],
-        collect($candidates)->map(fn($ws) => [
+        $candidates->map(fn($ws) => [
           $ws->id,
           Str::limit($ws->name, 30),
           $ws->created_at->format('Y-m-d'),
           $ws->file_count,
-          $this->formatBytes($ws->files->sum('size_bytes')),
+          $this->formatBytes($ws->allFiles->sum('size_bytes')),
         ])->toArray()
       );
 
@@ -138,9 +126,9 @@ class WorkspaceCleanupRollbackCommand extends Command
     }
   }
 
-  private function executeDelete(array $workspaces): \Illuminate\Support\Collection
+  private function executeDelete(Collection $workspaces): \Illuminate\Support\Collection
   {
-    return collect($workspaces)->map(function ($ws) {
+    return $workspaces->map(function ($ws) {
       $data = [
         'id' => $ws->id,
         'name' => $ws->name,
@@ -148,7 +136,23 @@ class WorkspaceCleanupRollbackCommand extends Command
       ];
 
       // Hapus referensi file dulu
-      File::where('workspace_id', $ws->id)->delete();
+      $ws->deleteAllFiles();
+
+      $ws->sessions()->get(['id','target_workspace_id','result_merge_id'])->map(function ($session) {
+        $merge = $session->resultMerge()->first(['id', 'manifest_hash']);
+        
+        $manifest = $merge->manifest()->first(['hash_tree_sha256','storage_path']);
+
+        // hapus manifest
+        $manifest->delete();
+        
+        // hapus referensi merges 
+        $merge->delete();
+
+        // hapus referensi session
+        $session->delete();
+      });
+
 
       // Hapus workspace
       $ws->delete();

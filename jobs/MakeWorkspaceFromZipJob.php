@@ -138,7 +138,7 @@ class MakeWorkspaceFromZipJob extends FileUploadProcessJob implements ShouldQueu
             'merged_at' => $now,
             'message' => 'merge is done by uploading file ' . $wsFile->sha256
           ];
-          if ($latestMerge = $workspaceModel->latestMerge()) {
+          if ($latestMerge = $workspaceModel->latestMerge) {
             $fillableMerge['prev_merge_id'] = $latestMerge->id;
           }
           $mergeModel = Merge::create($fillableMerge);

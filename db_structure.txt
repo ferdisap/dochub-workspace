@@ -32,7 +32,7 @@ $table->index(['workspace_id', 'merge_id', 'relative_path']);
 Schema::create('dochub_workspaces', function (Blueprint $table) {
     $table->id();
     $table->foreignId('owner_id')->constrained('users');
-    $table->string('name')->unique();
+    $table->string('name',191)->unique();
     $table->string('visibility')->default('private'); // 'public', 'private'
     $table->softDeletes(); // untuk archive tanpa hapus history
     $table->timestamps();
@@ -65,16 +65,20 @@ Schema::create('dochub_files', function (Blueprint $table) {
     // Jika action = 'deleted' → hapus file dari workspace live.
     // Jika action = 'added' → abaikan (karena di M2 belum ada).
     // Jika action = 'updated' → symlink blobs/{$file->blob_hash} ke $path.
-
-    // upload adalah ketika file di upload dan diregister menjadi worksace, maka path adalah upload.
-    // added adalah ketika file ditambahkan dengan cara bukan selain 'upload';
-    $table->string('action')->default('updated') // 'added', 'updated', 'deleted', 'upload'. 
+    // umumnya jika updated tidak mengubah blobs. Tapi jika mengubah blob, maka manifest terkait workspace_id ini harus diubah juga, lalu merge terkait workspace_id juga harus diubah manifest_hash nya karena hash nya pasti berubah juga.
+    // oleh karena itu perubahan action ini seperti tidak terlacak saat audit trail. Sehingga sangat tidak disarankan mengubah kolom blob_hash untuk action update
+    $table->string('action')->default('added') // 'added', 'updated', 'deleted'. 
         ->comment("How this file changed in this merge");
     
     $table->unsignedBigInteger('size_bytes');
     $table->timestamp('file_modified_at'); // mtime dari file asli
     
-    $table->unique(['merge_id', 'relative_path']); // pastikan tidak duplikat path per merge
+    // tidak boleh unique karena jika unique, tidak bisa rollback karena rollback tidak akan membuat merge record baru
+    // jika relative path tidak boleh unique karena ada kemungkinan relative_path akan ada sama walaupun workspace berbeda
+    // $table->unique(['merge_id', 'relative_path']); // pastikan tidak duplikat path per merge
+    // jadi solusinya unique seperti ini. Tapi unique seperti ini ada batasan karena kolom 'relative_path' itu panjang, jadi jika mysqlnya versi lama harus setting misalnya 'innodb_large_prefix' = aktif dan ROW_FORMAT=DYNAMIC agar bisa menampung index 3072 bytes (sekitar 768 karater utf8mb4);
+    // jadi hindari unique terhadap relative_path
+    // $table->unique(['workspace_id', 'relative_path']);
     $table->index(['workspace_id', 'relative_path']);
     $table->index('blob_hash');
 });

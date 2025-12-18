@@ -23,9 +23,7 @@ use Illuminate\Support\Facades\App;
 //        "path": "config/app.php",
 //        "sha256": "a1b2c3...",
 //        "size": 2048,
-//        TAMBAHAN Optional:
-//        "mtime" "2025-11-20T14:00:00Z",
-//        "is_binary": true
+//        "file_modified_at" "2025-11-20T14:00:00Z", // mtime dari file asli sebelum jadi blob
 //      }
 //   ]
 // }
@@ -79,6 +77,11 @@ class Manifest extends Model
       if (!ManifestVersionParser::isValid($manifest->version)) {
         throw new \InvalidArgumentException("Invalid version timestamp");
       }
+    });
+
+    static::deleting(function ($manifest) {
+      $path = WorkspaceManifest::path($manifest->storage_path);
+      WorkspaceManifest::unlink($path);
     });
   }
 

@@ -2,6 +2,7 @@
 
 namespace Dochub\Workspace\Consoles;
 
+use Carbon\Carbon;
 use Dochub\Workspace\Models\Merge;
 use Dochub\Workspace\Models\MergeSession;
 use Dochub\Workspace\Models\Workspace;
@@ -66,9 +67,11 @@ use function Illuminate\Support\now;
 
 class WorkspaceRollbackCommand extends Command
 {
+  public ?Carbon $now = null;
+
   protected $signature = 'workspace:rollback 
                             {workspace-id : ID workspace asal}
-                            {merge-id : ID merge tujuan (UUID)}
+                            {merge-id? : ID merge tujuan (UUID)}
                             {--name= : Nama kustom untuk workspace baru}
                             {--dry-run : Hanya tampilkan preview}
                             {--json : Output JSON}';
@@ -86,13 +89,19 @@ class WorkspaceRollbackCommand extends Command
     try {
       // Validasi
       $workspace = Workspace::findOrFail($workspaceId);
-      $merge = Merge::where('id', $mergeId)
-        ->where('workspace_id', $workspaceId)
-        ->firstOrFail();
+      if(!$mergeId) {
+        $merge = $workspace->latestMerge;
+        $mergeId = $merge->id;
+      } else {
+        $merge = Merge::where('id', $mergeId)
+          ->where('workspace_id', $workspaceId)
+          ->firstOrFail();
+      }
 
+      $this->now = now();
       $files = $merge->files()->count();
       $size = $merge->files()->sum('size_bytes');
-      $defaultName = $customName ?: "{$workspace->name}-rollback-" . now()->format('Ymd-His');
+      $defaultName = $customName ?: "{$workspace->name}-rollback-" . $this->now->format('Ymd-His');
       $workspaceName = Str::limit($defaultName, 191);
 
       if ($isJson) {
@@ -177,7 +186,14 @@ class WorkspaceRollbackCommand extends Command
     }
   }
 
-  /** mirip dengan WorkspaceRollbackController@duplicateFromMerge */
+  /** 
+   * mirip dengan WorkspaceRollbackController@duplicateFromMerge 
+   * yang namanya rollback, itu tidak ada perubahan pada merge sehingga tidak membuat merge record baru,
+   * Jadi:
+   * 1. Workspace record baru,
+   * 2. File record baru, tetapi workspace_id berubah dan merge_id tetap (seperti workspace merge sebelumnya),
+   * 3. Merge record tidak ada tambahan / perubahan
+   */
   private function createRollbackWorkspace(Workspace $original, Merge $merge, string $name): Workspace  {
     $newWorkspace = $original->replicate();
     $newWorkspace->name = $name;
@@ -196,10 +212,11 @@ class WorkspaceRollbackCommand extends Command
       'target_workspace_id' => $newWorkspace->id,
       'source_identifier' => "rollback:{$original->id}:{$merge->id}",
       'source_type' => 'rollback',
+      'result_merge_id' => $merge->id,
       'status' => 'applied',
-      'started_at' => now(),
-      'completed_at' => now(),
-      'initiated_by_user_id' => Auth::user()->id ?? 1,
+      'started_at' => $this->now,
+      'completed_at' => $this->now,
+      'initiated_by_user_id' => Auth::user()->id ?? 0,
       'metadata' => [
         'original_workspace_id' => $original->id,
         'source_merge_id' => $merge->id,

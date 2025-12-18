@@ -228,7 +228,8 @@ class FileUploadProcessJob implements ShouldQueue
       'blob_hash' => $hash,
       'workspace_id' => $workspaceId, // zero is nothing. Bisa saja untuk worksapce default
       //'old_blob_hash', // nullable
-      'action' => 'upload', // walaupun fungsi ini dipakai di turunan, action tetap upload karena file asalnya adalah uploadan
+      // 'action' => 'upload', // walaupun fungsi ini dipakai di turunan, action tetap upload karena file asalnya adalah uploadan
+      'action' => 'added', // added karena file di upload. 
       'size_bytes' => $filesize,
       'file_modified_at' => $mtime
     ]);
