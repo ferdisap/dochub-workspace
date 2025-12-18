@@ -16,8 +16,8 @@ Route::prefix('dochub')->middleware([
   Route::get('/workspace/blank', [WorkspaceController::class, 'blank'])->middleware('auth')->name('workspace.blank');
   Route::get('/workspace/clone/{workspace:name}', [WorkspaceController::class, 'clone'])->middleware('auth')->name('workspace.clone');
   // ROLLBACK Eksekusi rollback
-  Route::get('/workspace/rollback', [WorkspaceRollbackController::class, 'rollback'])->middleware('auth')->name('workspace.rollback');
+  Route::get('/workspace/rollback/{workspace}', [WorkspaceRollbackController::class, 'rollback'])->middleware('auth')->name('workspace.rollback');
   // CLEANUP Preview (GET) cleanupand and Eksekusi(POST) cleanup
-  Route::get('/workspace/cleanup-rollback', [WorkspaceCleanupController::class, 'preview'])->middleware('auth')->name('workspace.preview');
-  Route::post('/workspace/cleanup-rollback', [WorkspaceCleanupController::class, 'execute'])->middleware('auth')->name('workspace.cleanup');
+  // Route::get('/workspace/cleanup-rollback', [WorkspaceCleanupController::class, 'preview'])->middleware('auth')->name('workspace.preview');
+  // Route::post('/workspace/cleanup-rollback', [WorkspaceCleanupController::class, 'execute'])->middleware('auth')->name('workspace.cleanup');
 });

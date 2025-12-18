@@ -103,15 +103,15 @@ class UploadController
               return true;
             } else {
               // recreate $manifest model deleted
-              Log::info("Failed to delete wsBlob", []);
+              // Log::info("Failed to delete wsBlob", []);
             }
           } else {
             // recreate $blob model deleted
-            Log::info("Failed to delete manifest model", []);
+            // Log::info("Failed to delete manifest model", []);
           }
         } else {
           // recreate file Model deleted here
-          Log::info("Failed to delete blob model", []);
+          // Log::info("Failed to delete blob model", []);
         }
       }
     }

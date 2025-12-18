@@ -6,9 +6,11 @@ use Dochub\Workspace\Models\File;
 use Dochub\Workspace\Models\Merge;
 use Dochub\Workspace\Models\MergeSession;
 use Dochub\Workspace\Models\Workspace;
+use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Request;
 use Illuminate\Support\Facades\Response;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule; // Import the Rule facade
 
 use function Illuminate\Support\now;
@@ -44,69 +46,75 @@ use function Illuminate\Support\now;
 
 class WorkspaceRollbackController
 {
-  public function rollback(Request $request, int $workspaceId)
+  public function rollback(Request $request, Workspace $workspace)
   {
-    $workspace = Workspace::findOrFail($workspaceId);
     $mergeId = $request->input('merge_id'); // sama seperti request->get(), tapi input lebih canggih karena bisa nested eg: "merge.id"
+    if($mergeId){
+      $merge = Merge::findOrFail($mergeId);
+    } else {
+      $merge = $workspace->latestMerge()->first();
+    }
 
-    $newWorkspace = $this->duplicateFromMerge($workspace, $mergeId);
+    $newWorkspace = $this->duplicateFromMerge($request->user()->id, $workspace, $merge);
 
     return Response::make([
-      'success' => true,
-      'new_workspace' => [
-        'id' => $newWorkspace->id,
-        'name' => $newWorkspace->name,
-        'created_at' => $newWorkspace->created_at,
-      ],
+      'new_workspace' => $newWorkspace->toResponseDataArray(),
     ],200, [
       "content-type" => "application/json"
     ])->json();
   }
 
   /** mirip dengan WorkspaceRollbackCommand@createRollbackWorkspace */
-  private function duplicateFromMerge(Workspace $original, string $mergeId, string | null $newName = null): Workspace
+  private function duplicateFromMerge(mixed $userId, Workspace $original, Merge $merge, string | null $newName = null): Workspace
   {
     // Validasi merge milik workspace ini
-    $merge = Merge::where('id', $mergeId)
-      ->where('workspace_id', $original->id)
-      ->firstOrFail();
+    if((string) $merge->workspace_id !== (string) $original->id){
+      throw new \RuntimeException('The merge not workspace owned');
+    }
 
-    // Buat workspace baru
+    // create new workspace
     $newWorkspace = $original->replicate();
-    $newWorkspace->name = $newName ?? "{$original->name}-rollback-" . now()->format('Ymd');
+    $newWorkspace->name = Str::limit($newName ?? Workspace::defaultRollbackName($original->name), 191);
     $newWorkspace->save();
 
     // Salin semua file dari merge target
-    $files = $merge->files;
+    // ini lebih tepatnya mungkin untuk clone saja
+    // foreach ($merge->files as $file) {
+    //   File::create([
+    //     'merge_id' => $mergeId, // atau buat merge baru?
+    //     'workspace_id' => $newWorkspace->id,
+    //     'relative_path' => $file->relative_path,
+    //     'blob_hash' => $file->blob_hash,
+    //     'old_blob_hash' => null,
+    //     'action' => 'copied',
+    //     'size_bytes' => $file->size_bytes,
+    //     'file_modified_at' => $file->file_modified_at,
+    //   ]);
+    // }
 
-    foreach ($files as $file) {
-      File::create([
-        'merge_id' => $mergeId, // atau buat merge baru?
+    // Salin file dari merge target
+    foreach ($merge->files as $file) {
+      $file->replicate()->fill([
         'workspace_id' => $newWorkspace->id,
-        'relative_path' => $file->relative_path,
-        'blob_hash' => $file->blob_hash,
-        'old_blob_hash' => null,
-        'action' => 'copied',
-        'size_bytes' => $file->size_bytes,
-        'file_modified_at' => $file->file_modified_at,
-      ]);
+      ])->save();
     }
 
     // Opsional: buat merge session untuk audit
+    $now = now();
     MergeSession::create([
       'target_workspace_id' => $newWorkspace->id,
-      'source_identifier' => "rollback:{$original->id}:{$mergeId}",
+      'source_identifier' => "rollback:{$original->id}:{$merge->id}",
       'source_type' => 'rollback',
+      'result_merge_id' => $merge->id,
       'status' => 'applied',
-      'started_at' => now(),
-      'completed_at' => now(),
-      'initiated_by_user_id' => Auth::user()->id ?? 1,
+      'started_at' => $now,
+      'completed_at' => $now,
+      'initiated_by_user_id' => $userId,
       'metadata' => [
         'original_workspace_id' => $original->id,
-        'source_merge_id' => $mergeId,
-        // jika rollback
+        'source_merge_id' => $merge->id,
         'rollback_method' => 'duplicate',
-        'files_copied' => $files->count(),
+        'files_copied' => $merge->files->count(),
       ],
     ]);
 

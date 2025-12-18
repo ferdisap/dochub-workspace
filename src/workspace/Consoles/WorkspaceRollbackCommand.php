@@ -101,7 +101,8 @@ class WorkspaceRollbackCommand extends Command
       $this->now = now();
       $files = $merge->files()->count();
       $size = $merge->files()->sum('size_bytes');
-      $defaultName = $customName ?: "{$workspace->name}-rollback-" . $this->now->format('Ymd-His');
+      // $defaultName = $customName ?: "{$workspace->name}-rollback-" . $this->now->format('Ymd-His');
+      $defaultName = $customName ?: Workspace::defaultRollbackName($workspace->name);
       $workspaceName = Str::limit($defaultName, 191);
 
       if ($isJson) {
@@ -216,7 +217,7 @@ class WorkspaceRollbackCommand extends Command
       'status' => 'applied',
       'started_at' => $this->now,
       'completed_at' => $this->now,
-      'initiated_by_user_id' => Auth::user()->id ?? 0,
+      'initiated_by_user_id' => 0,
       'metadata' => [
         'original_workspace_id' => $original->id,
         'source_merge_id' => $merge->id,

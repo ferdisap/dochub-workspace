@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User;
+use Illuminate\Support\Str;
 
 use function Illuminate\Support\now;
 
@@ -164,13 +165,20 @@ class Workspace extends Model
     ])->exists();
   }
 
-  // Helper
-  public function duplicateFromMerge(string $mergeId, ?string $newName = null): self
+  public static function defaultRollbackName(string $workspaceName)
   {
-    $merge = $this->merges()->findOrFail($mergeId);
+    $def = "{$workspaceName}-rollback-" . now()->format('YmdHis');
+    return Str::limit($def, 191);
+  }
 
+  // Helper
+  public function duplicateFromMerge(Merge $merge, ?string $newName = null): self
+  {
     $newWorkspace = $this->replicate();
-    $newWorkspace->name = $newName ?? "{$this->name}-rollback-" . now()->format('YmdHis');
+    $newWorkspace->name = Str::limit($newName ?? self::defaultRollbackName($this->name), 191);
+
+    return $newWorkspace;
+
     $newWorkspace->save();
 
     // Salin file dari merge target
@@ -181,5 +189,14 @@ class Workspace extends Model
     }
 
     return $newWorkspace;
+  }
+
+  public function toResponseDataArray()
+  {
+    return [
+      'owner_id' => $this->owner_id,
+      'name' => $this->name,
+      'visibility' => $this->visibility,
+    ];
   }
 }

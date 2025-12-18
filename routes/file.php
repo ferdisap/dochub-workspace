@@ -15,4 +15,7 @@ Route::prefix('dochub')->middleware([
   ])->group(function () {
   // download uploaded file
   Route::get('/file/download/{blob:hash}', [FileController::class, 'getFile'])->name('dochub.file.get');
+  // pada dasarnya file tidak bisa di delete atau diubah isinya kecuali bikin blob baru, lalu merge ke workspace
+  // jadi tidak ada route delete, update
+  // kecuali file uploadan yang tidak ada merge nya
 });
