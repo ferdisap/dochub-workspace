@@ -2,7 +2,9 @@
 
 namespace Dochub\Workspace\Consoles;
 
-use Dochub\Workspace\Models\BlobReference;
+use Dochub\Workspace\Blob as WorkspaceBlob;
+use Dochub\Workspace\Models\Blob;
+use Dochub\Workspace\Models\File;
 use Dochub\Workspace\Workspace;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -20,8 +22,9 @@ use Illuminate\Support\Facades\DB;
 // php artisan blob:gc --keep-days=7
 class BlobGcCommand extends Command
 {
-  protected $signature = 'blob:gc {--dry-run : Hanya tampilkan, jangan hapus}
-                           {--keep-days=30 : Pertahankan blob dari merge < N hari}';
+  protected $signature = 'blob:gc 
+                            {--dry-run : Hanya tampilkan, jangan hapus}
+                            {--keep-days=30 : Pertahankan blob dari merge < N hari}';
 
   protected $description = 'Hapus blob yang tidak terpakai (garbage collection)';
 
@@ -40,8 +43,8 @@ class BlobGcCommand extends Command
       ->leftJoin('dochub_files as f', 'b.hash', '=', 'f.blob_hash')
       ->whereNull('f.blob_hash')
       ->select('b.hash', 'b.original_size_bytes')
-      ->get();
-
+      ->get(); // collection[$hash, $original_size_bytes]
+    
     $totalOrphans = $orphanBlobs->count();
     $totalSize = $orphanBlobs->sum('original_size_bytes');
 
@@ -58,19 +61,11 @@ class BlobGcCommand extends Command
 
       foreach ($orphanBlobs as $blob) {
         // Hapus file fisik
-        $subDir = substr($blob->hash, 0, 2);
-        // $path = storage_path("app/private/dochub/blobs/{$subDir}/{$blob->hash}");
-        // $path = Workspace::$storagePath . "/blobs/{$subDir}/{$blob->hash}"; // app/private/dochub/blobs/{$subDir}/{$blob->hash}
-        $path = Workspace::blobPath() . "/{$subDir}/{$blob->hash}"; // app/private/dochub/blobs/{$subDir}/{$blob->hash}
-
-        if (file_exists($path)) {
-          @unlink($path);
-          // Hapus folder kosong
-          @rmdir(dirname($path));
-        }
+        $path = WorkspaceBlob::hashPath($blob->hash);
+        WorkspaceBlob::unlink($path);
 
         // Hapus dari DB
-        BlobReference::where('hash', $blob->hash)->delete();
+        Blob::where('hash', $blob->hash)->delete();
 
         $progress->advance();
       }

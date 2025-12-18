@@ -2,7 +2,7 @@
 
 namespace Dochub\Workspace\Consoles;
 
-use Dochub\Workspace\Models\BlobReference;
+use Dochub\Workspace\Models\Blob;
 use Dochub\Workspace\Models\File;
 use Dochub\Workspace\Workspace;
 use Illuminate\Console\Command;
@@ -86,7 +86,7 @@ class BlobStatsCommand extends Command
     // $this->info(Storage::path("app/public"));
     // $this->info(realpath(Storage::path("app/public")) ? 'foo' : 'bar');
     // return;
-    $query = BlobReference::query();
+    $blobQuery = Blob::query();
     $fileQuery = File::query();
 
     if ($workspaceId = $this->option('workspace')) {
@@ -94,11 +94,11 @@ class BlobStatsCommand extends Command
       $fileQuery->where('workspace_id', $workspaceId);
     }
 
-    $totalBlobs = $query->count();
+    $totalBlobs = $blobQuery->count();
     $totalFiles = $fileQuery->count();
     $uniqueFiles = $fileQuery->distinct('blob_hash')->count('blob_hash');
 
-    $sizeData = $query->select(
+    $sizeData = $blobQuery->select(
       DB::raw('SUM(original_size_bytes) as total_original'),
       DB::raw('SUM(stored_size_bytes) as total_stored')
     )->first();
@@ -108,7 +108,7 @@ class BlobStatsCommand extends Command
     $savedBytes = $naiveSize - $actualSize;
     $savingsPct = $naiveSize > 0 ? ($savedBytes / $naiveSize) * 100 : 0;
 
-    $topMimes = $query
+    $topMimes = $blobQuery
       ->select('mime_type', DB::raw('COUNT(*) as count'))
       ->groupBy('mime_type')
       ->orderByDesc('count')

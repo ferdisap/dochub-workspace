@@ -1,105 +1,129 @@
 <?php
 
-namespace App\Console\Commands;
+namespace Dochub\Workspace\Consoles;
 
-use App\Models\Blob;
+use Dochub\Workspace\Blob as WorkspaceBlob;
+use Dochub\Workspace\Models\Blob;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 class BlobValidateCommand extends Command
 {
-    protected $signature = 'blob:validate {hash?} {--fix : Attempt to fix corrupt blobs}';
-    protected $description = 'Validate blob integrity and compression';
+  protected $signature = 'blob:validate {hash?} {--fix : Attempt to fix corrupt blobs}';
+  protected $description = 'Validate blob integrity and compression';
 
-    public function handle()
-    {
-        $hash = $this->argument('hash');
-        
-        if ($hash) {
-            $this->validateSingleBlob($hash);
-        } else {
-            $this->validateAllBlobs();
-        }
+  public function handle()
+  {
+    $hash = $this->argument('hash');
+
+    if ($hash) {
+      $this->validateSingleBlob($hash);
+    } else {
+      $this->validateAllBlobs();
+    }
+  }
+
+  private function validateAllBlobs()
+  {
+    DB::table('dochub_blobs')->get(['hash'])->map(function($blob) {
+      $this->validateSingleBlob($blob->hash);
+      $this->newLine();
+    });
+    
+  }
+
+  private function validateSingleBlob(string $hash)
+  {
+    $blob = Blob::find($hash);
+    if (!$blob) {
+      $this->error("Blob not found: {$hash}");
+      return 1;
     }
 
-    private function validateSingleBlob(string $hash)
-    {
-        $blob = Blob::find($hash);
-        if (!$blob) {
-            $this->error("Blob not found: {$hash}");
-            return 1;
-        }
+    $path = WorkspaceBlob::hashPath($hash);
 
-        $path = storage_path("app/private/csdb/blobs/" . substr($hash, 0, 2) . "/{$hash}");
-        
-        if (!file_exists($path)) {
-            $this->error("File not found on disk: {$hash}");
-            return 1;
-        }
-
-        $this->info("Validating blob: {$hash}");
-        $this->line("  Size on disk: " . filesize($path) . " bytes");
-        $this->line("  Stored compressed: " . ($blob->is_stored_compressed ? 'Yes' : 'No'));
-        $this->line("  Compression type: {$blob->compression_type}");
-
-        // Cek header file
-        $header = substr(file_get_contents($path, false, null, 0, 4), 0, 4);
-        $hex = bin2hex($header);
-        $this->line("  File header: {$hex}");
-
-        // Coba baca
-        try {
-            $content = $this->attemptRead($blob, $path);
-            $this->info("  ✅ Read successful (size: " . strlen($content) . " bytes)");
-        } catch (\Exception $e) {
-            $this->error("  ❌ Read failed: " . $e->getMessage());
-            
-            if ($this->option('fix')) {
-                $this->attemptFix($blob, $path);
-            }
-        }
+    if (!file_exists($path)) {
+      $this->error("File not found on disk: {$hash}");
+      return 1;
     }
 
-    private function attemptRead($blob, $path)
-    {
-        $stream = fopen($path, 'rb');
-        
-        if ($blob->is_stored_compressed && $blob->compression_type === 'gzip') {
-            stream_filter_append($stream, 'zlib.inflate', STREAM_FILTER_READ);
-        }
+    $this->info("Validating blob: {$hash}");
+    $this->line("  Blob Size on disk: " . filesize($path) . " bytes");
+    $this->line("  Original Size on disk: " . $blob->original_size_bytes . " bytes");
+    $this->line("  Stored compressed: " . ($blob->is_stored_compressed ? 'Yes' : 'No'));
+    $this->line("  Compression type: {$blob->compression_type}");
 
-        $content = '';
-        while (!feof($stream)) {
-            $content .= fread($stream, 8192);
-        }
-        fclose($stream);
-        
-        return $content;
-    }
+    // Cek header file
+    $header = substr(file_get_contents($path, false, null, 0, 4), 0, 4);
+    $hex = bin2hex($header);
+    $this->line("  File header: {$hex}");
 
-    private function attemptFix($blob, $path)
-    {
-        $this->info("  Attempting fix...");
-        
-        // Coba baca tanpa dekompresi
-        try {
-            $content = file_get_contents($path);
-            $this->info("  File readable as raw data");
-            
-            // Cek apakah sebenarnya tidak dikompresi
-            if (strlen($content) > 0 && $blob->is_stored_compressed) {
-                $this->warn("  Blob marked as compressed but contains raw data");
-                
-                // Update DB
-                $blob->update([
-                    'is_stored_compressed' => false,
-                    'compression_type' => null,
-                    'stored_size_bytes' => strlen($content),
-                ]);
-                
-                $this->info("  ✅ DB updated to reflect uncompressed status");
-            }
-        } catch (\Exception $e) {
-            $this->error("  Fix failed: " . $e->getMessage());
-        }
+    // Coba baca
+    try {
+      $totalSize = $this->attemptSizing($blob);
+      $this->info("  ✅ Read successful (size: " . $totalSize . " bytes)");
+    } catch (\Exception $e) {
+      $this->error("  ❌ Read failed: " . $e->getMessage());
+
+      if ($this->option('fix')) {
+        $this->attemptFix($blob, $path);
+      }
     }
+  }
+
+  private function attemptSizing(Blob $blob)
+  {
+    $totalSize = 0;
+    $wsBlob = new WorkspaceBlob();
+    $wsBlob->readStream($blob->hash, function ($stream) use(&$totalSize) {
+      while (!feof($stream)) {
+        $chunk = fread($stream, 8192);
+        $totalSize += strlen($chunk);  // Tambahkan panjangnya saja ke counter
+      }
+    });
+    return $totalSize;
+  }
+
+  // private function attemptRead(Blob $blob)
+  // {
+  //   $content = '';
+  //   $wsBlob = new WorkspaceBlob();
+  //   $wsBlob->readStream($blob->hash, function ($stream) use(&$content) {
+  //     while (!feof($stream)) {
+  //       $content .= fread($stream, 8192);
+  //     }
+  //   });
+  //   return $content;
+  // }
+
+  /**
+   * attempt fix file ini masih palsu karena hanya mengubah status file dari compressed menjadi uncompressed
+   */
+  private function attemptFix(Blob $blob)
+  {
+    $this->info("  Attempting fix...");
+
+    // Coba baca tanpa dekompresi
+    try {
+      $path = WorkspaceBlob::hashPath($blob->hash);
+      $this->info("  File readable as raw data");
+
+      // Cek apakah sebenarnya tidak dikompresi
+      if ($blob->compression_type) {
+        $this->warn("  Blob marked as compressed but contains raw data");
+
+        // Update DB
+        $blob->update([
+          'is_stored_compressed' => false,
+          'compression_type' => null,
+          'stored_size_bytes' => filesize($path),
+        ]);
+
+        $this->info("  ✅ DB updated to reflect uncompressed status");
+      }
+
+    } catch (\Exception $e) {
+      $this->error("  Fix failed: " . $e->getMessage());
+    }
+  }
 }

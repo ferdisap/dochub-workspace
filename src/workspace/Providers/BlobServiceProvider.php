@@ -6,6 +6,7 @@ use Dochub\Workspace\Blob;
 use Dochub\Workspace\Consoles\BlobBenchmarkCommand;
 use Dochub\Workspace\Consoles\BlobGcCommand;
 use Dochub\Workspace\Consoles\BlobStatsCommand;
+use Dochub\Workspace\Consoles\BlobValidateCommand;
 use Dochub\Workspace\Services\BlobLocalStorage;
 use Dochub\Workspace\Services\FlockLockManager;
 use Dochub\Workspace\Services\NullLockManager;
@@ -24,9 +25,10 @@ class BlobServiceProvider extends ServiceProvider
     // ✅ Commands — aman
     if ($this->app->runningInConsole()) {
       $this->commands([
-        // BlobBenchmarkCommand::class, 
+        BlobBenchmarkCommand::class, 
         BlobGcCommand::class,
-        BlobStatsCommand::class
+        BlobStatsCommand::class,
+        BlobValidateCommand::class,
       ]);
     }
 

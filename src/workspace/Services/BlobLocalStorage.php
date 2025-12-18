@@ -11,6 +11,7 @@ use Dochub\Workspace\Services\LockManager as ServicesLockManager;
 use Dochub\Workspace\Workspace;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 // # Development (default)
 // LOCK_DRIVER=flock
@@ -185,7 +186,13 @@ class BlobLocalStorage
     if (!file_exists($fullPath)) {
       throw new \RuntimeException("Manifest not found");
     }
-    $this->compresser->decompressStream($fullPath, $callback);
+    try {
+      $this->compresser->decompressStream($fullPath, $callback);
+    } catch(Throwable $e) {
+      $stream = gzopen($fullPath, 'rb');
+      $callback($stream);
+      fclose($stream);
+    }
   }
 
   /**

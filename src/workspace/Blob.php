@@ -2,13 +2,9 @@
 
 namespace Dochub\Workspace;
 
-use Dochub\Workspace\Enums\ManifestSource;
 use Dochub\Workspace\Services\BlobLocalStorage;
 use Dochub\Workspace\Services\ManifestVersionParser;
 use Exception;
-use Illuminate\Support\Facades\Config;
-
-use function Illuminate\Support\now;
 
 class Blob
 {
@@ -39,7 +35,7 @@ class Blob
   /**
    * get hash path
    */
-  public static function hashPath($hash)
+  public static function hashPath(string $hash)
   {
     $subDir = substr($hash, 0, 2);
     return self::path("{$subDir}/{$hash}");
@@ -106,15 +102,13 @@ class Blob
     $blobPath = $this->blobStorage->getBlobPath($hash);
     if(file_exists($blobPath)){
       self::setLocalReadWrite($blobPath);
-      return unlink($blobPath);
+      return self::unlink($blobPath);
     }
     return false;
   }
 
-  // public function hasBlobbed(string $filePath)
-  // {
-    // 1. instance blobLocalStorage class
-    // 2. create hash $newfile (blobLocalStorage->resolveHash);
-    // 3. check blobLocalStorage->blobExist
-  // }
+  public static function unlink(string $path)
+  {
+    return @unlink($path);
+  }
 }
