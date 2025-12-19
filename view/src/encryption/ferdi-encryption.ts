@@ -64,92 +64,150 @@ async function stringTo16Bytes(str: string) {
   return hashBytes.slice(0, 16); // ✅ Uint8Array(16)
 }
 
-export function mimeTextList(){
-  return [
-    "application/javascript",
-    "application/json",
-    "application/xml",
-    "application/xhtml+xml",
-    "application/manifest+json",
-    "application/ld+json",
-    "application/soap+xml",
-    "application/vnd.api+json",
-    "application/atom+xml",
-    // // walaupun docx tapi ini adalah binary karena di zip
-    // "application/msword",
-    // "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    // "application/vnd.ms-excel",
-    // "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    // "application/vnd.ms-powerpoint",
-    // "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    // "application/vnd.oasis.opendocument.text",
-    "application/rss+xml",
-    // "application/pkcs7-mime",
-    // "application/pgp-signature",
-    "application/yaml",
-    "application/toml",
-    "application/x-www-form-urlencoded",
-    "application/pgp-signature",
-    "application/pkcs7-mime",
-    // "multipart/form-data",
-    "image/svg+xml",
-    "image/vnd.dxf",
-    "model/step",
-    "model/step+xml",
-    // "model/step+zip",
-    // "model/step-xml+zi",
-    // "model/iges",
-    "model/obj",
-    // "model/stl",
-    "model/gltf+json",
-    "model/vnd.collada+xml",
-  ];
-}
+// export function mimeTextList() {
+//   return [
+//     "application/javascript",
+//     "application/json",
+//     "application/xml",
+//     "application/xhtml+xml",
+//     "application/manifest+json",
+//     "application/ld+json",
+//     "application/soap+xml",
+//     "application/vnd.api+json",
+//     "application/atom+xml",
+//     // // walaupun docx tapi ini adalah binary karena di zip
+//     // "application/msword",
+//     // "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+//     // "application/vnd.ms-excel",
+//     // "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+//     // "application/vnd.ms-powerpoint",
+//     // "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+//     // "application/vnd.oasis.opendocument.text",
+//     "application/rss+xml",
+//     // "application/pkcs7-mime",
+//     // "application/pgp-signature",
+//     "application/yaml",
+//     "application/toml",
+//     "application/x-www-form-urlencoded",
+//     "application/pgp-signature",
+//     "application/pkcs7-mime",
+//     // "multipart/form-data",
+//     "image/svg+xml",
+//     "image/vnd.dxf",
+//     "model/step",
+//     "model/step+xml",
+//     // "model/step+zip",
+//     // "model/step-xml+zi",
+//     // "model/iges",
+//     "model/obj",
+//     // "model/stl",
+//     "model/gltf+json",
+//     "model/vnd.collada+xml",
+//   ];
+// }
 
 export async function hashFile(file: File) {
   const thresholdMB = 1;
   const threshold = thresholdMB * 1024 * 1024; // 1 MB
 
-  const mime = file.type;
   // jika binary dan sizenya kurang dari limit (2x threshold) maka hash full
-  const isBinary = !(mime.startsWith('text/') || mimeTextList().includes(mime)); // sama dengan php
-  if(isBinary){
-    // jika binary dan size nya kecil maka hash full
-    if(file.size <= threshold * 2){
-      return hashFileFull(file);
-    }
-    return hashFileThreshold(file);
+  if (file.size <= threshold * 2) {
+    return hashFileFull(file);
+  } else {
+    return hashFileThreshold(file, thresholdMB);
   }
-  // jika text file maka hash full walau file besar
-  return hashFileFull(file);
 }
 
+/**
+ * tidak melibatkan file mtime (file_modified_at), murni isi file saja
+ * @param file 
+ * @returns 
+ */
 export async function hashFileFull(file: File) {
   const buffer = await file.arrayBuffer();
   const hash = sha256(ensureUint8Array(buffer)); // ✅ noble terima ArrayBuffer juga
   return bytesToHex(hash);
 }
 
-// output hex string
+// output hex string, diubah karena agar mendukung pack() menghindari collision attack
 export async function hashFileThreshold(file: File, thresholdMB = 1) {
-  const threshold = thresholdMB * 1024 * 1024; // 1 MB
+  const threshold = thresholdMB * 1024 * 1024;
 
-  // Jika besar → hash 1MB awal + 1MB akhir
+  // Inisialisasi hasher dari noble-hashes
+  const hasher = sha256.create();
+
+  // 1. Baca Head (Awal File)
   const firstSlice = file.slice(0, threshold);
-  const lastSlice = file.slice(file.size - threshold, file.size);
-
   const firstBuffer = await firstSlice.arrayBuffer();
-  const lastBuffer = await lastSlice.arrayBuffer();
+  hasher.update(new Uint8Array(firstBuffer));
 
-  // Gabungkan 2 buffer menjadi 1
-  const joined = new Uint8Array(
-    firstBuffer.byteLength + lastBuffer.byteLength
-  );
-  joined.set(new Uint8Array(firstBuffer), 0);
-  joined.set(new Uint8Array(lastBuffer), firstBuffer.byteLength);
+  // 2. Padanan pack('J', $size) - 64-bit Unsigned Big Endian untuk menghindari collision attack
+  const sizeBuffer = new ArrayBuffer(8);
+  const view = new DataView(sizeBuffer);
+  // Konversi lastModified ke detik (seperti filemtime PHP)
+  const mtimeInSeconds = Math.floor(file.lastModified / 1000); // menghindari file yang diedit meski mengganti 1 huruf
 
-  return sha256(joined);
+  // Menggunakan BigInt untuk 64-bit dan false untuk Big Endian (sesuai format 'J' PHP)
+  view.setBigUint64(0, BigInt(file.size), false);
+  view.setBigUint64(8, BigInt(mtimeInSeconds), false); // Offset 8
+  hasher.update(new Uint8Array(sizeBuffer));
+
+  // 3. Baca Tail (Akhir File) - Seperti fseek
+  if (file.size > threshold) {
+    const startPos = Math.max(0, file.size - threshold);
+    const lastSlice = file.slice(startPos);
+    const lastBuffer = await lastSlice.arrayBuffer();
+    hasher.update(new Uint8Array(lastBuffer));
+  }
+
+  // Selesaikan proses hash dan ubah ke format hex string
+  const hashResult = hasher.digest();
+
+  // Helper untuk mengubah Uint8Array ke Hex String
+  return Array.from(hashResult)
+    .map((b:any) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
+
+// // rekomendasi jika berjalan di Node.js karena fs.stat selalu membersihkan cache, bermanfaat saat mengambil mtime file
+// export async function hashFileThreshold(filePath: string, thresholdMB = 1) {
+//   const threshold = thresholdMB * 1024 * 1024;
+  
+//   // Ambil metadata terbaru (Identik dengan clearstatcache di PHP)
+//   // stat() di Node.js selalu mengambil data terbaru dari OS
+//   const stats = await fs.stat(filePath);
+//   const size = stats.size;
+//   const mtime = Math.floor(stats.mtimeMs / 1000); // Konversi ms ke detik
+
+//   const hash = createHash('sha256');
+//   const handle = await fs.open(filePath, 'r');
+
+//   try {
+//     // 1. Baca Head
+//     const headBuffer = Buffer.alloc(threshold);
+//     const { bytesRead: headBytes } = await handle.read(headBuffer, 0, threshold, 0);
+//     hash.update(headBuffer.subarray(0, headBytes));
+
+//     // 2. Tambahkan Metadata (Size & Mtime) - Identik pack('J')
+//     const metaBuffer = Buffer.alloc(16);
+//     metaBuffer.writeBigUInt64BE(BigInt(size), 0);
+//     metaBuffer.writeBigUInt64BE(BigInt(mtime), 8);
+//     hash.update(metaBuffer);
+
+//     // 3. Baca Tail (fseek)
+//     if (size > threshold) {
+//       const tailBuffer = Buffer.alloc(threshold);
+//       const startPos = Math.max(0, size - threshold);
+//       const { bytesRead: tailBytes } = await handle.read(tailBuffer, 0, threshold, startPos);
+//       hash.update(tailBuffer.subarray(0, tailBytes));
+//     }
+
+//     return hash.digest('hex');
+//   } finally {
+//     await handle.close();
+//   }
+// }
+
 
 // juga determinsitik, jadi aman untuk setiap kali aksess 
 // async function deriveFileIdBin(file: File, userId: string) {
@@ -345,8 +403,8 @@ async function prosesChunk(fileId: string, hashes: string[]) {
 export async function uploadFile(
   file: File,
   recipientPublicKeys: Record<string, Uint8Array>,
-  ownerPrivateKey:Uint8Array,
-  ownerPublicKey:Uint8Array,
+  ownerPrivateKey: Uint8Array,
+  ownerPublicKey: Uint8Array,
   currentUserId: string | number,
   chunkSize = 1_000_000 // 1MB default
 ) {

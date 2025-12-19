@@ -2,6 +2,7 @@
 
 namespace Dochub\Workspace\Services;
 
+use Dochub\Encryption\EncryptStatic;
 use Dochub\Workspace\Blob;
 use Dochub\Workspace\Models\Blob as BlobModel;
 use Dochub\Workspace\Services\Compression\Contract;
@@ -219,7 +220,7 @@ class BlobLocalStorage
 
       // Verifikasi berdasarkan ukuran
       if ($size <= $this->partialVerifyThreshold) {
-        $calculated = $this->hashFileIncremental($filePath);
+        $calculated = EncryptStatic::hashFileFull($filePath);
         if (!hash_equals($providedHash, $calculated)) {
           throw new RuntimeException("Provided hash mismatch (full verify)");
         }
@@ -231,32 +232,9 @@ class BlobLocalStorage
     }
 
     // Hitung sendiri dengan streaming
-    return $this->hashFileIncremental($filePath);
+    return EncryptStatic::hashFileFull($filePath);
   }
-
-  /**
-   * Hitung SHA-256 dengan streaming (RAM efisien)
-   */
-  public function hashFileIncremental(string $filePath): string
-  {
-    $ctx = hash_init('sha256');
-    $handle = @fopen($filePath, 'rb');
-
-    if (!$handle) {
-      throw new RuntimeException("Cannot open file for hashing: {$filePath}");
-    }
-
-    try {
-      while (!feof($handle)) {
-        $chunk = fread($handle, $this->chunkSize);
-        if ($chunk === false) break;
-        hash_update($ctx, $chunk);
-      }
-      return hash_final($ctx);
-    } finally {
-      fclose($handle);
-    }
-  }
+  
 
   /**
    * Hindari baca 1 GB file hanya untuk verifikasi
@@ -274,20 +252,22 @@ class BlobLocalStorage
     }
 
     try {
-      // Baca head (1 MB)
-      $head = fread($handle, self::$partialHashByte);
-      if ($head === false) $head = '';
+      // // Baca head (1 MB)
+      // $head = fread($handle, self::$partialHashByte);
+      // if ($head === false) $head = '';
 
-      // Baca tail (1 MB)
-      $tail = '';
-      if ($size > self::$partialHashByte) {
-        fseek($handle, max(0, $size - self::$partialHashByte));
-        $tail = fread($handle, self::$partialHashByte);
-      }
+      // // Baca tail (1 MB)
+      // $tail = '';
+      // if ($size > self::$partialHashByte) {
+      //   fseek($handle, max(0, $size - self::$partialHashByte));
+      //   $tail = fread($handle, self::$partialHashByte);
+      // }
 
-      // Gabung: head + size + tail → hash
-      $sample = $head . pack('J', $size) . $tail; // 'J' = unsigned 64-bit (big endian)
-      $sampleHash = hash('sha256', $sample);
+      // // Gabung: head + size + tail → hash
+      // $sample = $head . pack('J', $size) . $tail; // 'J' = unsigned 64-bit (big endian)
+      // $sampleHash = hash('sha256', $sample);
+
+      $sampleHash = EncryptStatic::hashFileThreshold($filePath, self::$partialHashByte);
 
       // Bandingkan 12 karakter pertama (cukup untuk deteksi error)
       if (!hash_equals(substr($expectedHash, 0, 12), substr($sampleHash, 0, 12))) {

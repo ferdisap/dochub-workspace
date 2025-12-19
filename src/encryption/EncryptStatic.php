@@ -128,21 +128,20 @@ class EncryptStatic
       throw new \InvalidArgumentException("File tidak ditemukan: $absolutePath");
     }
 
-    $mime = mime_content_type($absolutePath);
     // jika binary dan sizenya kurang dari limit (2x threshold) maka hash full
-    $isBinary = !(str_starts_with($mime, 'text/') || in_array($mime, Blob::mimeTextList()));
-    // Jika file <= 2MB → hash full (streaming tetap, tapi sekali jalan)
-    if ($isBinary) {
-      // jika binary dan size nya kecil maka hash full
-      if(($size <= $threshold * 2)){
-        return self::hashFileFull($absolutePath);
-      }
+    if ($size <= $threshold * 2) {
+      // konsekuensinya yaitu hash akan tetap SAMA meskipun file pernah diedit (berubah filemtime nya)
+      return self::hashFileFull($absolutePath);
+    } else {
+      // konsekuensinya yaitu hash BERBEDA meskipun isi filenya sama karena pernah di edit sehingga filemtimenya berbeda
       return self::hashFileThreshold($absolutePath, $thresholdMB);
     }
-    // jika text file maka hash full walau file besar
-    return self::hashFileFull($absolutePath);
   }
 
+  /**
+   * Hitung SHA-256 dengan streaming (RAM efisien)
+   * tidak melibatkan file mtime (file_modified_at), murni isi file saja
+   */
   public static function hashFileFull(string $absolutePath)
   {
     $ctx = hash_init('sha256');
@@ -166,6 +165,9 @@ class EncryptStatic
    * Hash file threshold (RAM-friendly):
    * - Jika file <= 2MB → hash full
    * - Jika > 2MB → hash gabungan 1MB awal + 1MB akhir
+   * 
+   * Melibatkan filemtime agar tetap berbeda walau ada perubahan ditengah. 
+   * Konsekuensinya yaitu hash akan berbeda meskipun isi filenya sama karena filemtime
    *
    * @param string $absolutePath Absolute path ke file
    * @param int $thresholdMB Threshold dalam MB (default 1)
@@ -173,37 +175,57 @@ class EncryptStatic
    */
   public static function hashFileThreshold(string $absolutePath, int $thresholdMB = 1): string
   {
-    $threshold = $thresholdMB * 1024 * 1024; // bytes
+    $threshold = $thresholdMB * 1024 * 1024; // Konversi ke bytes
+
+    // Jika diisi false (Default): PHP hanya membersihkan cache statistik file (seperti ukuran file, mtime, izin akses/permissions). Namun, PHP tetap menyimpan lokasi jalur (path) file tersebut.
+    // Jika diisi true: PHP akan menghapus cache statistik DAN memaksa sistem untuk melakukan resolusi ulang terhadap jalur file tersebut.
+    // jadi dibuat true saja karena fungsi ini jarang dipanggil.
+    clearstatcache(true, $absolutePath);
+
     $size = filesize($absolutePath);
+    $mtime = filemtime($absolutePath); // Mendapatkan timestamp (integer)
 
-    // File besar (>2MB): baca awal & akhir masing-masing $threshold byte
     $ctx = hash_init('sha256');
-
-    // Baca awal: $threshold byte
     $handle = fopen($absolutePath, 'rb');
-    if (!$handle) throw new \RuntimeException("Gagal membuka file: $absolutePath");
-    $read = 0;
-    while ($read < $threshold && !feof($handle)) {
-      $toRead = min(8192, $threshold - $read);
-      $chunk = fread($handle, $toRead);
-      if ($chunk === false) break;
-      hash_update($ctx, $chunk);
-      $read += strlen($chunk);
+    if (!$handle) {
+      throw new \RuntimeException("Gagal membuka file: $absolutePath");
     }
-    fclose($handle);
 
-    // Baca akhir: $threshold byte terakhir
-    $handle = fopen($absolutePath, 'rb');
-    if (!$handle) throw new \RuntimeException("Gagal membuka file: $absolutePath");
-    fseek($handle, max(0, $size - $threshold)); // lompat ke posisi akhir - threshold
-    while (!feof($handle)) {
-      $chunk = fread($handle, 8192);
-      if ($chunk !== false) {
+    try {
+      // 1. Baca Bagian Head (Awal)
+      $read = 0;
+      while ($read < $threshold && !feof($handle)) {
+        $toRead = min(8192, $threshold - $read);
+        $chunk = fread($handle, $toRead);
+        if ($chunk === false) break;
         hash_update($ctx, $chunk);
+        $read += strlen($chunk);
       }
-    }
-    fclose($handle);
 
-    return hash_final($ctx);
+      // 2. Masukkan Ukuran File (Penting agar sinkron dengan verifyPartialHash)
+      // mambahkan Metadata: Size (8 byte) + Mtime (8 byte)
+      // Ini mencegah file dengan head/tail sama tapi size beda dianggap identik
+      // tapi tetap tidak berlaku jika file sizenya identik. Misalnya file text yang ditengah-tengah diganti 1 huruf ([a-z] atau [A-Z] yang jenisnya (ASCII,dll) sama)
+      // solusinya tambahkan mtime
+      hash_update($ctx, pack('J', $size));
+      hash_update($ctx, pack('J', $mtime));
+
+      // 3. Baca Bagian Tail (Akhir) menggunakan fseek
+      if ($size > $threshold) {
+        // Lompat ke posisi: Ukuran total - threshold
+        fseek($handle, max(0, $size - $threshold));
+
+        while (!feof($handle)) {
+          $chunk = fread($handle, 8192);
+          if ($chunk === false) break;
+          hash_update($ctx, $chunk);
+        }
+      }
+
+      return hash_final($ctx);
+    } finally {
+      // Selalu tutup handle untuk membebaskan RAM dan resource OS
+      fclose($handle);
+    }
   }
 }

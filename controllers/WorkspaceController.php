@@ -25,8 +25,14 @@ class WorkspaceController
 
     // dd($fileId, $fileIdEdit1, $fileIdCopy1);
 
-    $path = "D:/data_ferdi/application/S1000D/apps/contoh_storage/test2.xml";
-    $pathEdit1 = "D:/data_ferdi/application/S1000D/apps/contoh_storage/test2_edit1.xml";
+    // $path = "D:/data_ferdi/application/S1000D/apps/contoh_storage/test2.xml";
+    // $pathEdit1 = "D:/data_ferdi/application/S1000D/apps/contoh_storage/test2_edit1.xml";
+    // $fileId = EncryptStatic::deriveFileIdBin($path, "1");
+    // $fileIdEdit1 = EncryptStatic::deriveFileIdBin($pathEdit1, "1");
+    // dd($fileId, $fileIdEdit1, $fileId === $fileIdEdit1);
+
+    $path = "D:/data_ferdi/application/S1000D/apps/contoh_storage/test3.xml";
+    $pathEdit1 = "D:/data_ferdi/application/S1000D/apps/contoh_storage/test3_edit1.xml";
     $fileId = EncryptStatic::deriveFileIdBin($path, "1");
     $fileIdEdit1 = EncryptStatic::deriveFileIdBin($pathEdit1, "1");
     dd($fileId, $fileIdEdit1, $fileId === $fileIdEdit1);

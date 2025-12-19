@@ -2,6 +2,7 @@
 
 namespace Dochub\Workspace\Consoles;
 
+use Dochub\Encryption\EncryptStatic;
 use Dochub\Workspace\Services\BlobLocalStorage;
 use Illuminate\Console\Command;
 // use Illuminate\Support\Facades\Artisan;
@@ -70,7 +71,7 @@ class BlobBenchmarkCommand extends Command
 
       // Lakukan hash
       if ($this->option('full') || $sizeBytes <= 50_000_000) {
-        $hash = $blobLocalStorage->hashFileIncremental($tempFile);
+        $hash = EncryptStatic::hashFileFull($tempFile);
       } else {
         // Simulasi partial verify
         $fakeHash = str_repeat('a', 64);
