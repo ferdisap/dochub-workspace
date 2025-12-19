@@ -2,6 +2,8 @@
 
 namespace Dochub\Encryption;
 
+use Dochub\Workspace\Blob;
+
 class EncryptStatic
 {
   public static function basePath()
@@ -80,7 +82,7 @@ class EncryptStatic
   public static function deriveFileIdBin(string $absolutePath, string $userId): array
   {
     // 1. Hash file → hex 64 char
-    $fileHashHex = self::hashFileThreshold($absolutePath);
+    $fileHashHex = self::hashFile($absolutePath);
 
     // 2. Deterministic input: "ferdi:v1:{userId}:{fileHashHex}"
     $input = "ferdi:v1:{$userId}:{$fileHashHex}"; // sama dengan di Typescript
@@ -114,6 +116,45 @@ class EncryptStatic
   }
 
   /**
+   * auto define method threshold or full
+   */
+  public function hashFile(string $absolutePath)
+  {
+    $thresholdMB = 1; // default
+    $threshold = $thresholdMB * 1024 * 1024; // bytes
+    $size = filesize($absolutePath);
+
+    if ($size === false) {
+      throw new \InvalidArgumentException("File tidak ditemukan: $absolutePath");
+    }
+
+    $mime = mime_content_type($absolutePath);
+    // jika binary dan sizenya kurang dari limit (2x threshold) maka hash full
+    $isBinary = !(str_starts_with($mime, 'text/') || in_array($mime, Blob::mimeTextList()));
+    // Jika file <= 2MB → hash full (streaming tetap, tapi sekali jalan)
+    if ($isBinary && ($size <= $threshold * 2)) {
+      return self::hashFileFull($absolutePath);
+    } else {
+      return self::hashFileThreshold($absolutePath, $thresholdMB);
+    }
+  }
+
+  public static function hashFileFull(string $absolutePath)
+  {
+    $ctx = hash_init('sha256');
+    $handle = fopen($absolutePath, 'rb');
+    if (!$handle) {
+      throw new \RuntimeException("Gagal membuka file: $absolutePath");
+    }
+    while (!feof($handle)) {
+      $chunk = fread($handle, 8192); // 8KB per chunk — RAM kecil
+      hash_update($ctx, $chunk);
+    }
+    fclose($handle);
+    return hash_final($ctx);
+  }
+
+  /**
    * Hash file threshold (RAM-friendly):
    * - Jika file <= 2MB → hash full
    * - Jika > 2MB → hash gabungan 1MB awal + 1MB akhir
@@ -126,25 +167,6 @@ class EncryptStatic
   {
     $threshold = $thresholdMB * 1024 * 1024; // bytes
     $size = filesize($absolutePath);
-
-    if ($size === false) {
-      throw new \InvalidArgumentException("File tidak ditemukan: $absolutePath");
-    }
-
-    // Jika file <= 2MB → hash full (streaming tetap, tapi sekali jalan)
-    if ($size <= $threshold * 2) {
-      $ctx = hash_init('sha256');
-      $handle = fopen($absolutePath, 'rb');
-      if (!$handle) {
-        throw new \RuntimeException("Gagal membuka file: $absolutePath");
-      }
-      while (!feof($handle)) {
-        $chunk = fread($handle, 8192); // 8KB per chunk — RAM kecil
-        hash_update($ctx, $chunk);
-      }
-      fclose($handle);
-      return hash_final($ctx);
-    }
 
     // File besar (>2MB): baca awal & akhir masing-masing $threshold byte
     $ctx = hash_init('sha256');

@@ -64,18 +64,71 @@ async function stringTo16Bytes(str: string) {
   return hashBytes.slice(0, 16); // ✅ Uint8Array(16)
 }
 
+export function mimeTextList(){
+  return [
+    "application/javascript",
+    "application/json",
+    "application/xml",
+    "application/xhtml+xml",
+    "application/manifest+json",
+    "application/ld+json",
+    "application/soap+xml",
+    "application/vnd.api+json",
+    "application/atom+xml",
+    // // walaupun docx tapi ini adalah binary karena di zip
+    // "application/msword",
+    // "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    // "application/vnd.ms-excel",
+    // "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    // "application/vnd.ms-powerpoint",
+    // "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    // "application/vnd.oasis.opendocument.text",
+    "application/rss+xml",
+    // "application/pkcs7-mime",
+    // "application/pgp-signature",
+    "application/yaml",
+    "application/toml",
+    "application/x-www-form-urlencoded",
+    "application/pgp-signature",
+    "application/pkcs7-mime",
+    // "multipart/form-data",
+    "image/svg+xml",
+    "image/vnd.dxf",
+    "model/step",
+    "model/step+xml",
+    // "model/step+zip",
+    // "model/step-xml+zi",
+    // "model/iges",
+    "model/obj",
+    // "model/stl",
+    "model/gltf+json",
+    "model/vnd.collada+xml",
+  ];
+}
+
+export async function hashFile(file: File) {
+  const thresholdMB = 1;
+  const threshold = thresholdMB * 1024 * 1024; // 1 MB
+
+  const mime = file.type;
+  // jika binary dan sizenya kurang dari limit (2x threshold) maka hash full
+  const isBinary = !(mime.startsWith('text/') || mimeTextList().includes(mime)); // sama dengan php
+  if(isBinary && (file.size <= threshold * 2)){
+    return hashFileFull(file);
+  } else {
+    return hashFileThreshold(file);
+  }
+}
+
+export async function hashFileFull(file: File) {
+  const buffer = await file.arrayBuffer();
+  const hash = sha256(ensureUint8Array(buffer)); // ✅ noble terima ArrayBuffer juga
+  return bytesToHex(hash);
+}
+
 // output hex string
 export async function hashFileThreshold(file: File, thresholdMB = 1) {
   const threshold = thresholdMB * 1024 * 1024; // 1 MB
-
-  // Jika file kecil → hash full
-  if (file.size <= threshold * 2) {
-    // jika kurang dari 2mb
-    const buffer = await file.arrayBuffer();
-    // return sha256(buffer);
-    const hash = sha256(ensureUint8Array(buffer)); // ✅ noble terima ArrayBuffer juga
-    return bytesToHex(hash);
-  }
 
   // Jika besar → hash 1MB awal + 1MB akhir
   const firstSlice = file.slice(0, threshold);
@@ -113,7 +166,7 @@ export async function deriveFileIdBin(file: File, userId: string): Promise<{
   bin: Uint8Array; // Uint8Array(16)
 }> {
   // 1. Hash file → 32-byte hex (misal SHA-256)
-  const fileHashHex = await hashFileThreshold(file); // pastikan ini hex string 64 karakter
+  const fileHashHex = await hashFile(file); // pastikan ini hex string 64 karakter
 
   // 2. Gabung userId + fileHash → jadi input deterministic
   const input = `ferdi:v1:${userId}:${fileHashHex}`; // aman: hanya ASCII tanpa `:` di akhir

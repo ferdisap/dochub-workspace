@@ -111,4 +111,46 @@ class Blob
   {
     return @unlink($path);
   }
+
+  public static function mimeTextList(){
+    return [
+    "application/javascript",
+    "application/json",
+    "application/xml",
+    "application/xhtml+xml",
+    "application/manifest+json",
+    "application/ld+json",
+    "application/soap+xml",
+    "application/vnd.api+json",
+    "application/atom+xml",
+    // // walaupun docx tapi ini adalah binary karena di zip
+    // "application/msword",
+    // "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    // "application/vnd.ms-excel",
+    // "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    // "application/vnd.ms-powerpoint",
+    // "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    // "application/vnd.oasis.opendocument.text",
+    "application/rss+xml",
+    // "application/pkcs7-mime",
+    // "application/pgp-signature",
+    "application/yaml",
+    "application/toml",
+    "application/x-www-form-urlencoded",
+    "application/pgp-signature",
+    "application/pkcs7-mime",
+    // "multipart/form-data",
+    "image/svg+xml",
+    "image/vnd.dxf",
+    "model/step",
+    "model/step+xml",
+    // "model/step+zip",
+    // "model/step-xml+zi",
+    // "model/iges",
+    "model/obj",
+    // "model/stl",
+    "model/gltf+json",
+    "model/vnd.collada+xml",
+  ];
+  }
 }
