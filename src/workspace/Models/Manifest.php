@@ -25,7 +25,9 @@ use Illuminate\Support\Facades\App;
 //        "size": 2048,
 //        "file_modified_at" "2025-11-20T14:00:00Z", // mtime dari file asli sebelum jadi blob
 //      }
-//   ]
+//   ],
+// TAMBAHAN:
+// "modified_files": []
 // }
 
 // Hitung ukuran:

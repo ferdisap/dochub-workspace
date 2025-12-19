@@ -81,12 +81,13 @@ return new class extends Migration
 
     // File
     Schema::create('dochub_files', function (Blueprint $table) {
-      $table->id();
+      // $table->id();
+      $table->uuid('id')->primary(); // jadi CHAR(36) NOT NULL
       $table->foreignId('workspace_id'); //->constrained('dochub_workspaces');
       $table->string('merge_id', 36); // UUID, state di merge ini
       $table->string('relative_path'); // e.g., 'config/app.php'
       $table->string('blob_hash', 64); // isi file → pointer ke blobs/
-      $table->string('old_blob_hash', 64)->nullable();  // null = added
+      // $table->string('old_blob_hash', 64)->nullable();  // null = added
 
       // Jika action = 'deleted' → hapus file dari workspace live.
       // Jika action = 'added' → abaikan (karena di M2 belum ada).
@@ -99,7 +100,7 @@ return new class extends Migration
       // $table->unique(['workspace_id', 'relative_path']);
       $table->index(['workspace_id', 'relative_path']);
       $table->index('blob_hash');
-      $table->index('old_blob_hash');
+      // $table->index('old_blob_hash');
       $table->timestamps();
 
       // $table->foreign('merge_id')->references('id')->on('dochub_merges')->onDelete('cascade');

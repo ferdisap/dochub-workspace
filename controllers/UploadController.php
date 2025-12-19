@@ -213,21 +213,21 @@ class UploadController
     }
 
     $manifestModel = Manifest::find($data['manifest_model']['id']);
-    
-    if(isset($data['blob_model']['hash'])){
+
+    if (isset($data['blob_model']['hash'])) {
       $blobModel = ModelsBlob::find($data['blob_model']['hash']);
-      
+
       // 🔑 Auto-cleanup dari cache jika sudah selesai
       // $cleaned = true; // untuk debut, sehingga tidak dihapus (overwrite)
       $cleaned = $cache->cleanupIfCompleted($id, $data); // sebenernya ngapus file uploadan (chunk), jadi kita tambahkan script untuk hapus file manual
-      
+
       $data_return = $data;
       unset($data_return['blob_model']);
       unset($data_return['manifest_model']);
-  
+
       if ($cleaned) {
         $deleted = $this->deletingFile($manifestModel, $blobModel);
-        if($deleted){
+        if ($deleted) {
           return response()->json([
             'process_id' => $id,
             'job_id' => $data['job_id'],

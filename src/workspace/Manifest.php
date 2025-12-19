@@ -7,6 +7,39 @@ use Illuminate\Support\Facades\App;
 use Dochub\Workspace\Services\ManifestLocalStorage;
 use Dochub\Workspace\Workspace;
 
+// {
+//   "source": "...",
+//   "version": "...",
+//   "total_files": 128,
+//   "total_size_bytes": 4567890, // file asli
+//   "hash_tree_sha256": "...", //  diambil dari prop["files"]
+//   // files adalah semua file yang aktiv. Jika ada perubahan blob atau path maka yang lama dikeluarkan->dipindahkan ke modified_files
+//   "files": [ 
+//      {
+//        "path": "config/app.php",
+//        "sha256": "a1b2c3...",
+//        "size": 2048,
+//        "file_modified_at": "2025-11-20T14:00:00Z", // mtime dari file asli sebelum jadi blob
+//        "message?":"..."
+//      }
+//   ],
+//   // history adalah semua file yang tidak terpakai, di sort berdasarkan id file database.
+//   // berbeda dengan files yang tidak ada id file karena itu adalah semua file yang sedang aktif
+//   // setiap file di prop["files"] tidak ada di history
+//   // ada kemungkinan setiap active file akan di rollback ke history sebelumnya (sesuai index history). 
+//   // jika synronizing maka ada kemungkinan "$id" berbeda jika pakai id number/incremented. Jadi solusinya pakai uuid
+//   "history?": {
+//     "$id": [
+//       {
+//         "path" : "...",
+//         "sha256": "...",
+//         "size": "...",
+//         "file_modified_at": "...",
+//         "message?": "..."
+//       }
+//     ]
+//   }
+// }
 /**
  * saat ini belum ada fungsi untuk membuat class ini berdasarkan file storage / model database
  */
@@ -17,6 +50,8 @@ class Manifest
   protected string $storagePath = ''; // jika tidak ada maka berarti belum dibuat
 
   public string | null $tags = null;
+
+  protected array $history = []; // ["$id" => [$file]]
 
   /**
    * @param string
@@ -134,6 +169,11 @@ class Manifest
       'files' => array_map(function($file) {
         return $file->toArray();
       },$this->files),
+      "history" => array_walk($this->history, function(&$files, $id) {
+        return array_map(function($file) {
+          return $file->toArray();
+        },$files);
+      }),
     ];
   }
 

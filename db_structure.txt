@@ -5,7 +5,7 @@
   │   │
   │   └── dochub_files (1 merge → banyak file state)
   │       ├── blob_hash → dochub_blobs.hash
-  │       └── old_blob_hash → dochub_blobs.hash (nullable)
+  │       └── old_blob_hash → dochub_blobs.hash (nullable) // dihapus
   │
   └── dochub_merge_sessions (workspace → session → result_merge_id)
 -->
@@ -52,7 +52,8 @@ Schema::create('dochub_merges', function (Blueprint $table) {
 
 <!-- model Files -->
 Schema::create('dochub_files', function (Blueprint $table) {
-    $table->id();
+    // $table->id();
+    $table->uuid('id')->primary(); // jadi CHAR(36) NOT NULL
     $table->foreignUuid('merge_id')->constrained('dochub_merges'); // state di merge ini. Jika 0 (walau uuid) sama seperti kolom 'workspace_id'
     $table->foreignId('workspace_id')->constrained('dochub_workspaces'); // 0 jika ingin untuk worksapce default seperti upload/atau lainnya tergantung kolom relative path di folder pertama eg: 'upload/a/b/c' berarti untuk workspace upload;
     
@@ -60,7 +61,8 @@ Schema::create('dochub_files', function (Blueprint $table) {
     $table->string('blob_hash', 64); // isi file → pointer ke blobs/
     
     // opsional: untuk lacak perubahan
-    $table->string('old_blob_hash', 64)->nullable(); // null = added
+    // sepertinya dihilangkan saja. Jika terjadi perubahan pada blob maka akan di simpan di manifest['modified_files']
+    // $table->string('old_blob_hash', 64)->nullable(); // null = added
 
     // Jika action = 'deleted' → hapus file dari workspace live.
     // Jika action = 'added' → abaikan (karena di M2 belum ada).

@@ -3,6 +3,7 @@
 namespace Dochub\Job;
 
 use App\Services\RedisCleanupService;
+use Dochub\Encryption\EncryptStatic;
 use Dochub\Upload\Cache\NativeCache;
 use Dochub\Upload\Services\CacheCleanup;
 use Dochub\Workspace\Blob;
@@ -221,7 +222,15 @@ class FileUploadProcessJob implements ShouldQueue
 
   public function storeFileRecordFromBlob(string $hash, string $relativePath, int $filesize, int $mtime, int $workspaceId = 0, string $mergeId = '0')
   {
+    $blobPath = Blob::hashPath($hash);
+    $fileId = EncryptStatic::deriveFileIdBin($blobPath, (string) $this->userId)['str'];
+
+    while(File::where('id', $fileId)->count() > 1){
+      $fileId = Str::uuid();
+    }
+
     File::updateOrCreate([
+      "id" => $fileId,
       'relative_path' => ($this->prefixPath ? $this->prefixPath . "/" : "") . $relativePath, // unique
       'merge_id' => $mergeId, // walau uuid bisa disi 0
     ],[
