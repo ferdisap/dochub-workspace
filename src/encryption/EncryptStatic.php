@@ -71,7 +71,7 @@ class EncryptStatic
 
   /**
    * Derive fileId (16-byte binary + UUID-like string) dari file dan userId
-   * Sama dengan di Typescript
+   * Sama dengan di Typescript. Jika file (biner dan kecil) atau (text) maka hash full
    *
    * @param string $absolutePath Path file absolut
    * @param string $userId String ID user (harus ASCII tanpa `:` di akhir)
@@ -150,12 +150,16 @@ class EncryptStatic
     if (!$handle) {
       throw new \RuntimeException("Gagal membuka file: $absolutePath");
     }
-    while (!feof($handle)) {
-      $chunk = fread($handle, 8192); // 8KB per chunk — RAM kecil
-      hash_update($ctx, $chunk);
+    try {
+      while (!feof($handle)) {
+        $chunk = fread($handle, 8192); // 8KB per chunk — RAM kecil
+        if ($chunk === false) break;
+        hash_update($ctx, $chunk);
+      }
+      return hash_final($ctx);
+    } finally {
+      fclose($handle);
     }
-    fclose($handle);
-    return hash_final($ctx);
   }
 
   /**
