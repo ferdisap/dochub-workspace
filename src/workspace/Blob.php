@@ -58,7 +58,7 @@ class Blob
           continue;
         }
         
-        $mtime = filemtime($filePath);
+        $mtime = filemtime($filePath); // cek lagi, $filePath seharusnya sudah di touch() dengan file aslinya saat upload atau saat lainnya
         $filesize = filesize($filePath);
 
         if($filePath){

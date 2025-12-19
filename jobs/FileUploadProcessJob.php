@@ -246,6 +246,10 @@ class FileUploadProcessJob implements ShouldQueue
 
   /**
    * Proses file ke blob storage
+   * setiap blob yang dibuat, akan di touch() dengan filemtime aslinya
+   * jadi filemtime blob sama dengan filemtime aslinya Ini menghindari hash blob yang berbeda jika ada file yang sama di upload
+   * sebelum blob dibuat, hash yang menggunakan filemtime akan menggunakan filemtime aslinya.
+   * jadi dipastikan hasil hashnya sama jika filemtime nya sama
    */
   public function processFilesToBlobs(array $files, array &$result, bool $unlinkIfSuccess = true): WorkspaceManifest
   {

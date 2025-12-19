@@ -94,7 +94,7 @@ return new class extends Migration
       // Jika action = 'updated' → symlink blobs/{$file->blob_hash} ke $path.
       $table->string('action')->default('added'); // added, updated, deleted
       $table->unsignedBigInteger('size_bytes');
-      $table->timestamp('file_modified_at'); // mtime dari file asli
+      // $table->timestamp('file_modified_at'); // mtime dari file asli
 
       // $table->unique(['merge_id', 'relative_path']);
       // $table->unique(['workspace_id', 'relative_path']);
