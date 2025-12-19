@@ -132,11 +132,15 @@ class EncryptStatic
     // jika binary dan sizenya kurang dari limit (2x threshold) maka hash full
     $isBinary = !(str_starts_with($mime, 'text/') || in_array($mime, Blob::mimeTextList()));
     // Jika file <= 2MB → hash full (streaming tetap, tapi sekali jalan)
-    if ($isBinary && ($size <= $threshold * 2)) {
-      return self::hashFileFull($absolutePath);
-    } else {
+    if ($isBinary) {
+      // jika binary dan size nya kecil maka hash full
+      if(($size <= $threshold * 2)){
+        return self::hashFileFull($absolutePath);
+      }
       return self::hashFileThreshold($absolutePath, $thresholdMB);
     }
+    // jika text file maka hash full walau file besar
+    return self::hashFileFull($absolutePath);
   }
 
   public static function hashFileFull(string $absolutePath)

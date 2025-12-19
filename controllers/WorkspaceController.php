@@ -15,15 +15,15 @@ class WorkspaceController
 {
   public function detail(Request $request, Workspace $workspace)
   {
-    $path = "D:/data_ferdi/application/S1000D/apps/contoh_storage/AFMS-Cessna172_v2_update9.docx";
-    $pathEdit1 = "D:/data_ferdi/application/S1000D/apps/contoh_storage/AFMS-Cessna172_v2_update9_edit1.docx";
-    $pathCopy1 = "D:/data_ferdi/application/S1000D/apps/contoh_storage/AFMS-Cessna172_v2_update9_copy1.docx";
+    // $path = "D:/data_ferdi/application/S1000D/apps/contoh_storage/AFMS-Cessna172_v2_update9.docx";
+    // $pathEdit1 = "D:/data_ferdi/application/S1000D/apps/contoh_storage/AFMS-Cessna172_v2_update9_edit1.docx";
+    // $pathCopy1 = "D:/data_ferdi/application/S1000D/apps/contoh_storage/AFMS-Cessna172_v2_update9_copy1.docx";
 
-    $fileId = EncryptStatic::deriveFileIdBin($path, "1");
-    $fileIdEdit1 = EncryptStatic::deriveFileIdBin($pathEdit1, "1");
-    $fileIdCopy1 = EncryptStatic::deriveFileIdBin($pathCopy1, "1");
+    // $fileId = EncryptStatic::deriveFileIdBin($path, "1");
+    // $fileIdEdit1 = EncryptStatic::deriveFileIdBin($pathEdit1, "1");
+    // $fileIdCopy1 = EncryptStatic::deriveFileIdBin($pathCopy1, "1");
 
-    dd($fileId, $fileIdEdit1, $fileIdCopy1);
+    // dd($fileId, $fileIdEdit1, $fileIdCopy1);
 
     $path = "D:/data_ferdi/application/S1000D/apps/contoh_storage/test2.xml";
     $pathEdit1 = "D:/data_ferdi/application/S1000D/apps/contoh_storage/test2_edit1.xml";

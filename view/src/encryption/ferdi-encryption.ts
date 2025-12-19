@@ -113,11 +113,15 @@ export async function hashFile(file: File) {
   const mime = file.type;
   // jika binary dan sizenya kurang dari limit (2x threshold) maka hash full
   const isBinary = !(mime.startsWith('text/') || mimeTextList().includes(mime)); // sama dengan php
-  if(isBinary && (file.size <= threshold * 2)){
-    return hashFileFull(file);
-  } else {
+  if(isBinary){
+    // jika binary dan size nya kecil maka hash full
+    if(file.size <= threshold * 2){
+      return hashFileFull(file);
+    }
     return hashFileThreshold(file);
   }
+  // jika text file maka hash full walau file besar
+  return hashFileFull(file);
 }
 
 export async function hashFileFull(file: File) {
