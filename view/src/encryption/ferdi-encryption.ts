@@ -106,6 +106,11 @@ async function stringTo16Bytes(str: string) {
 //   ];
 // }
 
+/**
+ * Auto-select threshold vs full hashing:
+ * - Jika file.size ≤ 2 * threshold → hash full
+ * - Selain itu → hash threshold
+ */
 export async function hashFile(file: File) {
   const thresholdMB = 1;
   const threshold = thresholdMB * 1024 * 1024; // 1 MB
@@ -120,8 +125,9 @@ export async function hashFile(file: File) {
 
 /**
  * tidak melibatkan file mtime (file_modified_at), murni isi file saja
- * @param file 
- * @returns 
+ * Hitung SHA-256 full file (RAM-heavy untuk file besar — gunakan hanya jika file kecil)
+ * @param file File object (browser File API)
+ * @returns Hex string SHA-256 (64 lowercase chars)
  */
 export async function hashFileFull(file: File) {
   const buffer = await file.arrayBuffer();
@@ -129,7 +135,19 @@ export async function hashFileFull(file: File) {
   return bytesToHex(hash);
 }
 
-// output hex string, diubah karena agar mendukung pack() menghindari collision attack
+
+/**
+ * Hitung SHA-256 threshold (RAM-efficient):
+ * - Hash = head (1MB) + pack('J', size) + pack('J', mtime) + tail (1MB)
+ * - Sesuai dengan PHP: pack('J', $size) → big-endian uint64
+ *                 pack('J', $mtime) → big-endian uint64
+ * 
+ * output hex string, diubah karena agar mendukung pack() menghindari collision attack
+ *
+ * @param file File object
+ * @param thresholdMB default 1 (MB)
+ * @returns Hex string SHA-256 (64 lowercase chars)
+ */
 export async function hashFileThreshold(file: File, thresholdMB = 1) {
   const threshold = thresholdMB * 1024 * 1024;
 
@@ -142,14 +160,14 @@ export async function hashFileThreshold(file: File, thresholdMB = 1) {
   hasher.update(new Uint8Array(firstBuffer));
 
   // 2. Padanan pack('J', $size) - 64-bit Unsigned Big Endian untuk menghindari collision attack
-  const sizeBuffer = new ArrayBuffer(8);
+  const sizeBuffer = new ArrayBuffer(16);
   const view = new DataView(sizeBuffer);
+  // Menggunakan BigInt untuk 64-bit dan false untuk Big Endian (sesuai format 'J' PHP)
+  view.setBigUint64(0, BigInt(file.size), false);  // false = big-endian
+  
   // Konversi lastModified ke detik (seperti filemtime PHP)
   const mtimeInSeconds = Math.floor(file.lastModified / 1000); // menghindari file yang diedit meski mengganti 1 huruf
-
-  // Menggunakan BigInt untuk 64-bit dan false untuk Big Endian (sesuai format 'J' PHP)
-  view.setBigUint64(0, BigInt(file.size), false);
-  view.setBigUint64(8, BigInt(mtimeInSeconds), false); // Offset 8
+  view.setBigUint64(8, BigInt(mtimeInSeconds), false); // Offset 8, big-endian
   hasher.update(new Uint8Array(sizeBuffer));
 
   // 3. Baca Tail (Akhir File) - Seperti fseek
@@ -164,9 +182,10 @@ export async function hashFileThreshold(file: File, thresholdMB = 1) {
   const hashResult = hasher.digest();
 
   // Helper untuk mengubah Uint8Array ke Hex String
-  return Array.from(hashResult)
-    .map((b:any) => b.toString(16).padStart(2, '0'))
-    .join('');
+  return bytesToHex(hashResult);
+  // return Array.from(hashResult)
+  //   .map((b:any) => b.toString(16).padStart(2, '0'))
+  //   .join('');
 }
 
 // // rekomendasi jika berjalan di Node.js karena fs.stat selalu membersihkan cache, bermanfaat saat mengambil mtime file
