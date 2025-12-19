@@ -118,7 +118,7 @@ class EncryptStatic
   /**
    * auto define method threshold or full
    */
-  public function hashFile(string $absolutePath)
+  public static function hashFile(string $absolutePath)
   {
     $thresholdMB = 1; // default
     $threshold = $thresholdMB * 1024 * 1024; // bytes
