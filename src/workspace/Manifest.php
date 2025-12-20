@@ -2,6 +2,7 @@
 
 namespace Dochub\Workspace;
 
+use Dochub\Encryption\EncryptStatic;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\App;
 use Dochub\Workspace\Services\ManifestLocalStorage;
@@ -28,7 +29,7 @@ use Dochub\Workspace\Workspace;
 //   // setiap file di prop["files"] tidak ada di history
 //   // ada kemungkinan setiap active file akan di rollback ke history sebelumnya (sesuai index history). 
 //   // jika synronizing maka ada kemungkinan "$id" berbeda jika pakai id number/incremented. Jadi solusinya pakai uuid
-//   "history?": {
+//   "histories": {
 //     "$id": [
 //       {
 //         "path" : "...",
@@ -146,10 +147,10 @@ class Manifest
     if (!$source) return false;
 
     if (is_array($source)) {
-      return hash('sha256', json_encode($source));
+      return EncryptStatic::hash(json_encode($source));
     } else {
       $content = self::content($source);
-      return hash('sha256', json_encode($content['files'] ?? []));
+      return EncryptStatic::hash(json_encode($content['files'] ?? []));
     }
   }
 

@@ -1,2 +1,2 @@
-New-Item -ItemType SymbolicLink -Path D:\data_ferdi\application\S1000D\apps\csdb\resources\views\vendor\workspace -Target D:\data_ferdi\application\S1000D\lib\csdb_lib\dochub\view\src
-New-Item -ItemType SymbolicLink -Path D:\data_ferdi\application\S1000D\apps\csdb\public\vendor\workspace -Target D:\data_ferdi\application\S1000D\lib\csdb_lib\dochub\view\dist
+New-Item -ItemType SymbolicLink -Path D:\data_ferdi\application\S1000D\apps\csdb\resources\views\vendor\dochub -Target D:\data_ferdi\application\S1000D\lib\csdb_lib\dochub\view\src
+New-Item -ItemType SymbolicLink -Path D:\data_ferdi\application\S1000D\apps\csdb\public\vendor\dochub -Target D:\data_ferdi\application\S1000D\lib\csdb_lib\dochub\view\dist

@@ -168,19 +168,19 @@ class ZipProcessJob extends FileUploadProcessJob implements ShouldQueue
       $result['total_files'] = count($files);
 
       // #2. change into blob
-      $wsManifest = $this->processFilesToBlobs($files, $result);
-      $wsManifest->tags = $metadata['tags'] ?? null;
+      $dhManifest = $this->processFilesToBlobs($files, $result);
+      $dhManifest->tags = $metadata['tags'] ?? null;
       
       // #3. create manifest model
       Manifest::create([
         'from_id' => $this->userId,
-        'source' => $wsManifest->source,
-        'version' => $wsManifest->version,
-        'total_files' => $wsManifest->total_files,
-        'total_size_bytes' => $wsManifest->total_size_bytes,
-        'hash_tree_sha256' => $wsManifest->hash_tree_sha256,
-        'storage_path' => $wsManifest->storage_path(),
-        'tags' => $wsManifest->tags
+        'source' => $dhManifest->source,
+        'version' => $dhManifest->version,
+        'total_files' => $dhManifest->total_files,
+        'total_size_bytes' => $dhManifest->total_size_bytes,
+        'hash_tree_sha256' => $dhManifest->hash_tree_sha256,
+        'storage_path' => $dhManifest->storage_path(),
+        'tags' => $dhManifest->tags
       ]);
 
       // delete directory upload karena sudah menjadi blob

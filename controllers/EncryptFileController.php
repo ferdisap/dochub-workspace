@@ -28,7 +28,7 @@ class EncryptFileController
 
   public function registrationView(Request $request)
   {
-    return view('vendor.workspace.encryption.keys.createKey');
+    return view('vendor.dochub.encryption.keys.app');
   }
 
   public function registerPublicKey(Request $request)

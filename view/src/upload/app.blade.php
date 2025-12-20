@@ -16,11 +16,13 @@
     <meta name="user-email" content="{{ $user['email'] }}">
 
     <!-- Styles / Scripts -->
-    @if (file_exists(public_path('vendor/workspace/assets/manifest.json')) || file_exists(public_path('hot')))
-        @vite(['resources/views/vendor/workspace/upload/upload.ts'])
+    @if(file_exists(public_path('hot')))
+        @vite(['resources/views/vendor/dochub/upload/upload.ts'], 'vendor/dochub')
+    @elseif (file_exists(public_path('vendor/dochub/manifest.json')))
+        @vite(['view/src/upload/upload.ts'], 'vendor/dochub')
     @else
-        <link href="/vendor/workspace/assets/upload.css" rel="stylesheet" />
-        <script src="/vendor/workspace/assets/upload.js" type="module"></script>
+        <link href="/vendor/dochub/assets/upload.css" rel="stylesheet" />
+        <script src="/vendor/dochub/assets/js/upload/upload.js" type="module"></script>
         <style>
             /*! tailwindcss v4.0.7 | MIT License | https://tailwindcss.com */
             @layer theme {

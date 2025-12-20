@@ -20,4 +20,7 @@ Route::prefix('dochub')->middleware([
   // CLEANUP Preview (GET) cleanupand and Eksekusi(POST) cleanup
   // Route::get('/workspace/cleanup-rollback', [WorkspaceCleanupController::class, 'preview'])->middleware('auth')->name('workspace.preview');
   // Route::post('/workspace/cleanup-rollback', [WorkspaceCleanupController::class, 'execute'])->middleware('auth')->name('workspace.cleanup');
+
+  // ANALYZE
+  Route::get('/workspace/analyze', [WorkspaceController::class, 'analyzeView'])->middleware('auth')->name('workspace.analyze');
 });

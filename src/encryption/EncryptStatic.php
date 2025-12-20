@@ -85,6 +85,7 @@ class EncryptStatic
     $fileHashHex = self::hashFile($absolutePath);
 
     // 2. Deterministic input: "ferdi:v1:{userId}:{fileHashHex}"
+    if(strlen($userId) != 64) $userId = hash('sha256', $userId, false);
     $input = "ferdi:v1:{$userId}:{$fileHashHex}"; // sama dengan di Typescript
 
     // 3. SHA-256 input → ambil 16 byte pertama
@@ -113,6 +114,11 @@ class EncryptStatic
       'bin' => $fileIdBin, // ✅ \x01\x23\x45..., binary string 16-byte (bukan base64/hex)
       // karena ada mutator di model file, jadi bisa menggunakan 'bin' sebagai id database
     ];
+  }
+
+  public static function hash(string $source):string
+  {
+    return hash('sha256', $source);
   }
 
   /**

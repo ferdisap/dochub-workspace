@@ -25,14 +25,14 @@ class UploadController
 {
   public function formView(Request $request)
   {
-    return view('vendor.workspace.upload.app', [
+    return view('vendor.dochub.upload.app', [
       'user' => $request->user()
     ]);
   }
 
   public function listView(Request $request)
   {
-    return view('vendor.workspace.upload.list.app', [
+    return view('vendor.dochub.upload.list.app', [
       'user' => $request->user()
     ]);
   }
@@ -86,14 +86,14 @@ class UploadController
 
     $fileModelDeleted = [];
     if ($files->count() > 0) {
-      $wsBlob = new Blob(); // Ws Blob
+      $dhBlob = new Blob(); // Ws Blob
       // jika ada di storage
-      if ($wsBlob->isExist($hash)) {
+      if ($dhBlob->isExist($hash)) {
         // hapus blob model dan manifest model
         if ($blob->delete()) {
           if ($manifest->delete()) {
             // hapus blob storage
-            if ($wsBlob->destroy($hash)) {
+            if ($dhBlob->destroy($hash)) {
               // delete model file
               foreach ($files as $fileModel) {
                 if ($fileModel->delete()) {
@@ -103,7 +103,7 @@ class UploadController
               return true;
             } else {
               // recreate $manifest model deleted
-              // Log::info("Failed to delete wsBlob", []);
+              // Log::info("Failed to delete dhBlob", []);
             }
           } else {
             // recreate $blob model deleted
@@ -144,27 +144,27 @@ class UploadController
   public function makeWorkspace(Request $request, Manifest $manifest)
   {
     // validate the total of files in manifest must be 1
-    $wsManifest = ($manifest->content);
-    if (count($wsManifest->files) != 1) {
-      return response("Files must be one ea, actual " . count($wsManifest->files), 400);
+    $dhManifest = ($manifest->content);
+    if (count($dhManifest->files) != 1) {
+      return response("Files must be one ea, actual " . count($dhManifest->files), 400);
     }
 
     // validasi mime (harus zip)
-    $wsFile = $wsManifest->files[0];
-    $blob = ModelsBlob::findOrFail($wsFile->sha256);
+    $dhFile = $dhManifest->files[0];
+    $blob = ModelsBlob::findOrFail($dhFile->sha256);
     if (!in_array($blob->mime_type, ['application/zip', 'application/gzip'])) {
       return response("Files must be zip formated, actual " . $blob->mime_type, 400);
     }
 
     // tidak ada validasi workspace name. Jika existing ada maka akan di merge. Meskipun filenya sama tidak akan membuat record apapun kecuali dochub_merge_session record
     // validasi workspace name
-    // $workspaceName = MakeWorkspaceFromZipJob::getWorkspaceNameFromWsFile($wsFile);
+    // $workspaceName = MakeWorkspaceFromZipJob::getWorkspaceNameFromWsFile($dhFile);
     // if (Workspace::where('name', $workspaceName)->first('id')) {
     //   return response("Files name exist, {$workspaceName}", 400);
     // }
 
-    $processId = $wsManifest->hash_tree_sha256;
-    $filesize = $wsManifest->total_size_bytes;
+    $processId = $dhManifest->hash_tree_sha256;
+    $filesize = $dhManifest->total_size_bytes;
     if ($filesize > (1 * 1024 * 1024)) {
       $job = MakeWorkspaceFromZipJob::withId($manifest->toJson(), $request->user()->id);
       dispatch($job)->onQueue('making-workspace-from-upload');

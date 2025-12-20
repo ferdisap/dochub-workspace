@@ -3,6 +3,6 @@ migrate php artisan migrate
 seeding db
 >>> php artisan db:seed
 publish workspace view
->> php artisan vendor:publish --tag=workspace-views
+>> php artisan vendor:publish --tag=dochub-views
 publish workspace asset
->> php artisan vendor:publish --tag=workspace-asset
+>> php artisan vendor:publish --tag=dochub-assets

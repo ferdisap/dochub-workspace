@@ -69,9 +69,9 @@ class MakeWorkspaceFromZipJob extends FileUploadProcessJob implements ShouldQueu
     return $job;
   }
 
-  public static function getWorkspaceNameFromWsFile(File $wsFile)
+  public static function getWorkspaceNameFromWsFile(File $dhFile)
   {
-    return str_replace(" ", '_', pathinfo($wsFile->relative_path)['filename']);
+    return str_replace(" ", '_', pathinfo($dhFile->relative_path)['filename']);
   }
 
   public function handle()
@@ -84,15 +84,15 @@ class MakeWorkspaceFromZipJob extends FileUploadProcessJob implements ShouldQueu
 
     $manifestModel = new ModelManifest($data['manifest_model']);
     $manifestModel->id = $data['manifest_model']['id'];
-    $wsManifest = $manifestModel->content;
+    $dhManifest = $manifestModel->content;
     $this->putManifestToMetadata($manifestModel);
     $startTime = microtime(true);
     $now = now();
 
-    $wsFile = $wsManifest->files[0];
-    $blobModel = ModelsBlob::findOrFail($wsFile->sha256);
+    $dhFile = $dhManifest->files[0];
+    $blobModel = ModelsBlob::findOrFail($dhFile->sha256);
     $this->putBlobToMetadata($blobModel);
-    $workspaceName = self::getWorkspaceNameFromWsFile($wsFile);
+    $workspaceName = self::getWorkspaceNameFromWsFile($dhFile);
 
     $workspaceModel = ModelsWorkspace::firstOrCreate([
       'name' => $workspaceName,
@@ -121,22 +121,22 @@ class MakeWorkspaceFromZipJob extends FileUploadProcessJob implements ShouldQueu
       $result['total_files'] = count($files);
 
       // #2. change into blob
-      $wsManifest = $this->processFilesToBlobs($files, $result);
-      $wsManifest->tags = $metadata['tags'] ?? null;
+      $dhManifest = $this->processFilesToBlobs($files, $result);
+      $dhManifest->tags = $metadata['tags'] ?? null;
 
       // #3. create record of manifest
-      if ($this->storeManifestRecord($wsManifest, $workspaceModel->id)) {
-        $wsManifest->store(); // save to local
+      if ($this->storeManifestRecord($dhManifest, $workspaceModel->id)) {
+        $dhManifest->store(); // save to local
 
         // #4. if manifest_hash is already added to dochub_merges, igonore it. Otherwise assign manifest_hash in dochub_merges
         // untuk menghindari double merge, chek dahulu berdasarkan hash_tree_sha256
-        if (!($mergeModel = Merge::where('manifest_hash', $wsManifest->hash_tree_sha256)->first(['id']))) {
+        if (!($mergeModel = Merge::where('manifest_hash', $dhManifest->hash_tree_sha256)->first(['id']))) {
           $fillableMerge = [
             'workspace_id' => $workspaceModel->id,
-            'manifest_hash' => $wsManifest->hash_tree_sha256,
+            'manifest_hash' => $dhManifest->hash_tree_sha256,
             // 'label' => 'v1.0.0',
             'merged_at' => $now,
-            'message' => 'merge is done by uploading file ' . $wsFile->sha256
+            'message' => 'merge is done by uploading file ' . $dhFile->sha256
           ];
           if ($latestMerge = $workspaceModel->latestMerge) {
             $fillableMerge['prev_merge_id'] = $latestMerge->id;
@@ -145,8 +145,8 @@ class MakeWorkspaceFromZipJob extends FileUploadProcessJob implements ShouldQueu
         }
 
         // #5. create record of files from blob
-        foreach ($wsManifest->files as $wsFileinZip) {
-          $this->storeFileRecordFromBlob($wsFileinZip["sha256"], $wsFileinZip["relative_path"], $wsFileinZip["size_bytes"], $wsFileinZip["file_modified_at"], (int) $workspaceModel->id, (string) $mergeModel->id);
+        foreach ($dhManifest->files as $dhFileinZip) {
+          $this->storeFileRecordFromBlob($dhFileinZip["sha256"], $dhFileinZip["relative_path"], $dhFileinZip["size_bytes"], $dhFileinZip["file_modified_at"], (int) $workspaceModel->id, (string) $mergeModel->id);
         }
       }
 
@@ -162,7 +162,7 @@ class MakeWorkspaceFromZipJob extends FileUploadProcessJob implements ShouldQueu
         'target_workspace_id' => $workspaceModel->id,
         'initiated_by_user_id' => $this->userId,
         'result_merge_id' => $mergeModel->id,
-        'source_identifier' => "upload:" . basename($wsFile->relative_path), // include file extension
+        'source_identifier' => "upload:" . basename($dhFile->relative_path), // include file extension
         'source_type' => 'upload',
         'started_at' => $now,
         'status' => 'pending',

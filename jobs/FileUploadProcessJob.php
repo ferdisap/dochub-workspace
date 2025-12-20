@@ -198,20 +198,20 @@ class FileUploadProcessJob implements ShouldQueue
     rmdir($dir);
   }
 
-  public function storeManifestRecord(WorkspaceManifest $wsManifest, int $workspaceId = 0)
+  public function storeManifestRecord(WorkspaceManifest $dhManifest, int $workspaceId = 0)
   {
     $manifestModel = null;
-    if(!($manifestModel = Manifest::where('hash_tree_sha256', $wsManifest->hash_tree_sha256)->first(['id']))){
+    if(!($manifestModel = Manifest::where('hash_tree_sha256', $dhManifest->hash_tree_sha256)->first(['id']))){
       $fillable = [
         // workspace_id = null, berarti tidak terkait dengan worksapce
         'from_id' => $this->userId,
-        'source' => $wsManifest->source,
-        'version' => $wsManifest->version,
-        'total_files' => $wsManifest->total_files,
-        'total_size_bytes' => $wsManifest->total_size_bytes,
-        'hash_tree_sha256' => $wsManifest->hash_tree_sha256,
-        'storage_path' => $wsManifest->storage_path(),
-        'tags' => $wsManifest->tags
+        'source' => $dhManifest->source,
+        'version' => $dhManifest->version,
+        'total_files' => $dhManifest->total_files,
+        'total_size_bytes' => $dhManifest->total_size_bytes,
+        'hash_tree_sha256' => $dhManifest->hash_tree_sha256,
+        'storage_path' => $dhManifest->storage_path(),
+        'tags' => $dhManifest->tags
       ];
       if($workspaceId || (int) $workspaceId > 0) $fillable['workspace_id'] = $workspaceId;
       $manifestModel = Manifest::create($fillable);
@@ -324,16 +324,16 @@ class FileUploadProcessJob implements ShouldQueue
 
       // #2. change into blob (create record of blob)
       $files = $this->scanDirectory($uploadDir);
-      $wsManifest = $this->processFilesToBlobs($files, $result);
-      $wsManifest->tags = $metadata['tags'] ?? null;
+      $dhManifest = $this->processFilesToBlobs($files, $result);
+      $dhManifest->tags = $metadata['tags'] ?? null;
 
       // #3. create record of manifest
-      if($this->storeManifestRecord($wsManifest)){        
-        $wsManifest->store(); // save to local
+      if($this->storeManifestRecord($dhManifest)){        
+        $dhManifest->store(); // save to local
 
         // #4. create record of files from blob
-        foreach ($wsManifest->files as $wsFile) {
-          $this->storeFileRecordFromBlob($wsFile["sha256"], $wsFile["relative_path"], $wsFile["size_bytes"], $wsFile["file_modified_at"]);
+        foreach ($dhManifest->files as $dhFile) {
+          $this->storeFileRecordFromBlob($dhFile["sha256"], $dhFile["relative_path"], $dhFile["size_bytes"], $dhFile["file_modified_at"]);
         }
       }
 

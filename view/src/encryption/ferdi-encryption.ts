@@ -110,8 +110,9 @@ async function stringTo16Bytes(str: string) {
  * Auto-select threshold vs full hashing:
  * - Jika file.size ≤ 2 * threshold → hash full
  * - Selain itu → hash threshold
+ * @returns string
  */
-export async function hashFile(file: File) {
+export async function hashFile(file: File) :Promise<string>{
   const thresholdMB = 1;
   const threshold = thresholdMB * 1024 * 1024; // 1 MB
 
@@ -129,10 +130,15 @@ export async function hashFile(file: File) {
  * @param file File object (browser File API)
  * @returns Hex string SHA-256 (64 lowercase chars)
  */
-export async function hashFileFull(file: File) {
+export async function hashFileFull(file: File) :Promise<string>{
   const buffer = await file.arrayBuffer();
   const hash = sha256(ensureUint8Array(buffer)); // ✅ noble terima ArrayBuffer juga
   return bytesToHex(hash);
+}
+
+export function hash(source:string):string
+{
+  return bytesToHex(sha256(stringToBytes(source)));
 }
 
 
@@ -148,7 +154,7 @@ export async function hashFileFull(file: File) {
  * @param thresholdMB default 1 (MB)
  * @returns Hex string SHA-256 (64 lowercase chars)
  */
-export async function hashFileThreshold(file: File, thresholdMB = 1) {
+export async function hashFileThreshold(file: File, thresholdMB = 1) :Promise<string>{
   const threshold = thresholdMB * 1024 * 1024;
 
   // Inisialisasi hasher dari noble-hashes
@@ -250,6 +256,7 @@ export async function deriveFileIdBin(file: File, userId: string): Promise<{
   const fileHashHex = await hashFile(file); // pastikan ini hex string 64 karakter
 
   // 2. Gabung userId + fileHash → jadi input deterministic
+  if(userId.length != 64) userId = hash(userId);
   const input = `ferdi:v1:${userId}:${fileHashHex}`; // aman: hanya ASCII tanpa `:` di akhir
 
   // 3. Hash ulang → 32-byte → ambil 16-byte pertama

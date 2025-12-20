@@ -29,21 +29,21 @@ class WorkspaceServiceProvider extends ServiceProvider
     $this->loadRoutesFrom(__DIR__ . '/../../../routes/workspace.php');
     $this->loadRoutesFrom(__DIR__ . '/../../../routes/token.php');
 
-    // ✅ View >>> php artisan vendor:publish --tag=workspace-views
+    // ✅ View >>> php artisan vendor:publish --tag=dochub-views
     // 1. Daftarkan Views
-    $this->loadViewsFrom(__DIR__ . '/../../../view/src', 'workspace-views');
+    $this->loadViewsFrom(__DIR__ . '/../../../view/src', 'dochub-views');
 
     // 2. Tentukan apa yang bisa di-publish
     $this->publishes([
       // A. Views untuk di-publish
-      __DIR__ . '/../../../view/src' => resource_path('views/vendor/workspace'),
-    ], 'workspace-views'); // 'views' adalah TAG publikasi
+      __DIR__ . '/../../../view/src' => resource_path('views/vendor/dochub'),
+    ], 'dochub-views'); // 'views' adalah TAG publikasi
 
     // ✅ Asset >>> php artisan vendor:publish --tag=workspace-assets
     // B. Assets untuk di-publish
     $this->publishes([
-      __DIR__ . '/../../../view/dist' => public_path('vendor/workspace'),
-    ], 'workspace-assets'); // 'assets' adalah TAG publikasi
+      __DIR__ . '/../../../view/dist' => public_path('vendor/dochub'),
+    ], 'dochub-assets'); // 'assets' adalah TAG publikasi
 
 
 

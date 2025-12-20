@@ -74,8 +74,8 @@ class BlobValidateCommand extends Command
   private function attemptSizing(Blob $blob)
   {
     $totalSize = 0;
-    $wsBlob = new WorkspaceBlob();
-    $wsBlob->readStream($blob->hash, function ($stream) use(&$totalSize) {
+    $dhBlob = new WorkspaceBlob();
+    $dhBlob->readStream($blob->hash, function ($stream) use(&$totalSize) {
       while (!feof($stream)) {
         $chunk = fread($stream, 8192);
         $totalSize += strlen($chunk);  // Tambahkan panjangnya saja ke counter
@@ -87,8 +87,8 @@ class BlobValidateCommand extends Command
   // private function attemptRead(Blob $blob)
   // {
   //   $content = '';
-  //   $wsBlob = new WorkspaceBlob();
-  //   $wsBlob->readStream($blob->hash, function ($stream) use(&$content) {
+  //   $dhBlob = new WorkspaceBlob();
+  //   $dhBlob->readStream($blob->hash, function ($stream) use(&$content) {
   //     while (!feof($stream)) {
   //       $content .= fread($stream, 8192);
   //     }

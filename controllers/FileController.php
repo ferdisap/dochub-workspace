@@ -10,11 +10,11 @@ class FileController
 {
   public function getFile(Request $request, ModelsBlob $blob)
   {
-    $wsBlob = new Blob();
+    $dhBlob = new Blob();
     $hash = $blob->hash;
     return response()->stream(
-      function () use ($hash, $wsBlob) {
-        $wsBlob->readStream(
+      function () use ($hash, $dhBlob) {
+        $dhBlob->readStream(
           $hash,
           function ($stream) {
             while (!feof($stream)) {

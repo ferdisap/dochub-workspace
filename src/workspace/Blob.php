@@ -49,7 +49,7 @@ class Blob
     $total_size_bytes = 0; // sebelum di hash
     // $hash_tree_sha256 = null;
     // $storage_path = null;
-    $wsFiles = [];
+    $dhFiles = [];
     foreach ($files as $relativePath => $filePath) {
       // dd($relativePath, $filePath, file_exists($filePath));
       try {
@@ -69,7 +69,7 @@ class Blob
           $processed++;
   
           $total_size_bytes += $filesize;
-          $wsFiles[] = new File($relativePath, $hash, $filesize, $mtime);
+          $dhFiles[] = new File($relativePath, $hash, $filesize, $mtime);
           
           $callback($hash, $relativePath, $filePath, $filesize, $mtime, null, $processed, $total_files);
         } else {
@@ -81,13 +81,13 @@ class Blob
       }
     } 
 
-    $wsFiles = array_map(fn ($wsFile) => $wsFile->toArray(), $wsFiles);
+    $dhFiles = array_map(fn ($dhFile) => $dhFile->toArray(), $dhFiles);
     $version = ManifestVersionParser::makeVersion();
-    $wsManifest = new Manifest(
-      $source, $version, $total_files, $total_size_bytes, $wsFiles,
+    $dhManifest = new Manifest(
+      $source, $version, $total_files, $total_size_bytes, $dhFiles,
     );
-    $wsManifest->store();
-    return $wsManifest;
+    $dhManifest->store();
+    return $dhManifest;
   }
 
   public function readStream(string $hash, callable $callback){

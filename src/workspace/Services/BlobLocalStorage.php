@@ -80,9 +80,9 @@ class BlobLocalStorage
    * Threshold untuk verifikasi partial (byte)
    * File > threshold → pakai verifikasi partial
    */
-  private int $partialVerifyThreshold = 50_000_000; // 50 MB
+  private int $partialVerifyThreshold = 2097152; // 2Mb (2 * 1024 * 1024) saja (x2 hash partial) karena kalau 50 nanti di fungsi di browser tidak bisa mengikuti karena tidak bisa stream (kalau pakai window.showFilePicker terlalu repot)
 
-  protected int $partialHashByte = 1_000_000; // 1MB
+  protected int $partialHashByte = 1048576; // 1MB (1 * 1024 * 1024)
 
   protected ServicesLockManager $lockManager;
 
@@ -232,7 +232,11 @@ class BlobLocalStorage
     }
 
     // Hitung sendiri dengan streaming
-    return EncryptStatic::hashFileFull($filePath);
+    if ($size <= $this->partialVerifyThreshold) {
+      return EncryptStatic::hashFileFull($filePath);
+    } else {
+      return EncryptStatic::hashFileThreshold($filePath, self::$partialHashByte);
+    }
   }
   
 

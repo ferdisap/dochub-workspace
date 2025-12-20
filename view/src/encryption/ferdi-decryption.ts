@@ -20,10 +20,13 @@ import * as pdfjs from 'pdfjs-dist';
 import { deriveWrapKey, deriveX25519KeyPair } from './ferdi-encryption';
 import { DocumentInitParameters, RenderParameters } from 'pdfjs-dist/types/src/display/api';
 import { route_encryption_download_file } from '../helpers/listRoute';
+// import PdfWorker from './analyze.worker.ts?worker';
 
 // Setup worker (wajib!)
 pdfjs.GlobalWorkerOptions.workerSrc =
-  new URL('./pdf.worker.mjs', import.meta.url).toString();
+  // new PdfWorker();
+  // new URL('./pdf.worker.mjs', import.meta.url).toString();
+  new URL('./../worker/pdf.worker.mjs', import.meta.url).toString();
 
 // ========== UTILS (ringkas & self-contained)
 const decoder = new TextDecoder();

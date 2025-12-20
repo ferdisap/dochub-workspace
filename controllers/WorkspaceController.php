@@ -7,12 +7,19 @@ use Dochub\Workspace\Models\Merge;
 use Dochub\Workspace\Models\MergeSession;
 use Dochub\Workspace\Models\Workspace;
 use Dochub\Workspace\Workspace as DochubWorkspace;
-use Illuminate\Support\Facades\Request;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Validation\Rule; // Import the Rule facade
 
 class WorkspaceController
 {
+  public function analyzeView(Request $request)
+  {
+    return view('vendor.dochub.workspace.analyze.app', [
+      'user' => $request->user()
+    ]);
+  }
+
   public function detail(Request $request, Workspace $workspace)
   {
     // $path = "D:/data_ferdi/application/S1000D/apps/contoh_storage/AFMS-Cessna172_v2_update9.docx";
