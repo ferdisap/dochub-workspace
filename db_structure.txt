@@ -32,10 +32,12 @@ $table->index(['workspace_id', 'merge_id', 'relative_path']);
 Schema::create('dochub_workspaces', function (Blueprint $table) {
     $table->id();
     $table->foreignId('owner_id')->constrained('users');
-    $table->string('name',191)->unique();
-    $table->string('visibility')->default('private'); // 'public', 'private'
+    $table->string('name',191); // unique dengan owner_id
+    $table->string('visibility',16)->default('private'); // 'public', 'private'
     $table->softDeletes(); // untuk archive tanpa hapus history
     $table->timestamps();
+
+    $table->unique(['owner_id', 'name']);
 });
 
 <!-- model Merge -->
@@ -44,7 +46,7 @@ Schema::create('dochub_merges', function (Blueprint $table) {
     $table->foreignUuid('prev_merge_id')->nullable()->constrained('dochub_merges');
     $table->foreignId('workspace_id')->constrained('dochub_workspaces');
     $table->string('manifest_hash',64)->nullable(); //->constrained('dochub_manifests');
-    $table->string('label')->nullable(); // 'v1.2.3'
+    $table->string('label',16)->nullable(); // 'v1.2.3'
     $table->text('message')->nullable();
     $table->timestamp('merged_at'); // kapan state ini direkam (immutable)
     $table->timestamps();

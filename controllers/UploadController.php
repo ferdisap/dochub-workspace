@@ -2,6 +2,7 @@
 
 namespace Dochub\Controller;
 
+use Closure;
 use Dochub\Job\MakeWorkspaceFromZipJob;
 use Dochub\Upload\Cache\NativeCache;
 use Dochub\Upload\Cache\RedisCache;
@@ -10,14 +11,18 @@ use Dochub\Upload\Models\Resources\Upload as ResourcesUpload;
 use Dochub\Upload\Models\Upload;
 use Dochub\Workspace\Blob;
 use Dochub\Workspace\Enums\ManifestSourceType;
+use Dochub\Workspace\Merge;
 use Dochub\Workspace\Models\Blob as ModelsBlob;
 use Dochub\Workspace\Models\File;
 use Dochub\Workspace\Models\Manifest;
 use Dochub\Workspace\Models\Workspace;
 use Dochub\Workspace\Services\BlobLocalStorage;
 use Dochub\Workspace\Services\ManifestLocalStorage;
+use Dochub\Workspace\Services\ManifestVersionParser;
+use Dochub\Workspace\Workspace as DochubWorkspace;
 use Exception;
 use Illuminate\Container\Attributes\Auth;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -63,12 +68,75 @@ class UploadController
     ]);
   }
 
-  public function getManifest(Request $request, Manifest $manifest)
+  // public function getManifest(Request $request, Manifest $manifest)
+  // {
+  //   return response([
+  //     "manifest" => $manifest->content
+  //   ]);
+  // }
+
+  // http://localhost:1001/dochub/manifest/search?query=hash:aa4d977d2bf8d2775ae3c2fc93e97d2455f4ff52f8b082b1e24f86bd7eb18ba7
+  // http://localhost:1001/dochub/manifest/search?query=source:upload:user-d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35
+  public function searchManifest(Request $request)
   {
-    return response([
-      "manifest" => $manifest->content
+    $qType = null;
+    $qString = null;
+    $request->validate([
+      "query" => [
+        'required',
+        function (string $attribute, mixed $value, Closure $fail) use(&$qType, &$qString) {
+          $re = '/(name|version|source|hash|label):(.+)/';
+          preg_match($re, $value, $matches, PREG_OFFSET_CAPTURE, 0);
+          if(!(isset($matches[1][0]) && isset($matches[2][0]))){
+            $fail("{$attribute} value not suitable with {$re}");
+          }
+          $type = $matches[1][0];
+          $qVal = $matches[2][0];
+          switch ($type) {
+            case 'name':
+              if(!(DochubWorkspace::isValidName($qVal))) $fail("{$attribute} value type must be " . DochubWorkspace::getNamePattern(). " and max. length is " . DochubWorkspace::getMaxLengthName()) . " character";
+              break;
+            case 'version': 
+              if(!(ManifestVersionParser::isValid($qVal))) $fail('{$attribute} value type must be ' . ManifestVersionParser::getPattern());
+              break;
+            case 'source': 
+              if(!(ManifestSourceType::isValid($qVal))) $fail('{$attribute} value type must be ' . ManifestSourceType::getPattern());
+              break;
+            case 'hash': 
+              if((strlen($qVal) !== 64)) $fail('{$attribute} value type must be 64 length lower case letter [a-z]');
+              break;
+            case 'label': 
+              if(!(Merge::isValidLabel($qVal))) $fail('{$attribute} value type must be ' . Merge::getLabelPattern() . " and max. length is " . Merge::getMaxLengthLabel()) . " character";
+              break;
+          }
+          $qType = $type;
+          $qString = $qVal;
+        },
+      ],
     ]);
+
+    $manifestModel = (match ($qType) {
+      'name' => Manifest::where('workspace_id', Workspace::where('name', $qString)->where("owner_id", $request->user()->id)->value('id'))->first(),
+      'version' => Manifest::where('version', $qString)->first(),
+      'source' => Manifest::where('source', $qString)->first(),
+      'hash' => Manifest::where('hash_tree_sha256', $qString)->first(),
+      'label' => Manifest::whereHas('merge', function(Builder $query) use($qString) {
+        $query->where('label', $qString);
+      })
+    })
+    ->where('from_id', $request->user()->id)
+    ->first();
+
+    if($manifestModel){
+      return response([
+        "manifest" => $manifestModel->content
+      ]);
+    } else {
+      return response(null, 404);
+    }
+
   }
+
   public function getManifests(Request $request)
   {
     $manifestModels = Manifest::where('from_id', (string) $request->user()->id);
@@ -129,7 +197,7 @@ class UploadController
   public function deleteFile(Request $request, Manifest $manifest, ModelsBlob $blob)
   {
     // validate, jika manifest terhubung ke merges, maka tidak bisa dihapus di sini
-    if ($manifest->merges()->count() > 1) {
+    if ($manifest->merge) {
       abort(403, "Forbiden to delete file");
     }
 

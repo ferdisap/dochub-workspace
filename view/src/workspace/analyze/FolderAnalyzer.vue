@@ -11,7 +11,8 @@
 	import { DhWorkspace } from "../core/DhWorkspace";
 	import { computeDiff, DiffResult } from "./compare";
 	import DiffSummary from "./DiffSummary.vue";
-	import SearchManifestPrompt from "../../components/Prompt/SearchManifestPrompt.vue";
+	import GeneralPrompt from "../../components/Prompt/GeneralPrompt.vue";
+  import { route_manifest_search } from "../../helpers/listRoute";
 
 	const isAnalyzing = ref(false);
 	const folderRoot = ref<FileNode | null>(null);
@@ -102,13 +103,12 @@
 		throw new Error("Failed to build manifest");
 	}
 
-	async function fetchManifest(hash: string) {
-		return (await fetch(`/dochub/manifest/get/${hash}`).then((r) => r.json()))
-			.manifest;
+	async function fetchManifest(query: string) {
+		return (await fetch(route_manifest_search(query)).then((r) => r.json())).manifest;
 	}
 
-	async function downloadManifest(hash: string | null) {
-		const manifest = await (hash ? fetchManifest(hash) : buildManifest());
+	async function downloadManifest(query: string | null) {
+		const manifest = await (query ? fetchManifest(query) : buildManifest());
 		const jsonBlob = new Blob([JSON.stringify(manifest)], {
 			type: "application/json",
 		});
@@ -127,13 +127,13 @@
     compared.value = true;
 		loading.value = true;
 
-    // const sourceManifest = await handleSearchManifestPrompt();
-    // return;
+    showGeneralPrompt.value = true;
+    // eg: hash:aa4d977d2bf8d2775ae3c2fc93e97d2455f4ff52f8b082b1e24f86bd7eb18ba7
+    // eg: label:v1.0.0
+    const querySearchManifest = await onPromptOpen(); 
 
 		const targetManifest = await buildManifest();
-		// const sourceManifest = await fetchManifest(
-		// 	"aa4d977d2bf8d2775ae3c2fc93e97d2455f4ff52f8b082b1e24f86bd7eb18ba7"
-		// );
+		const sourceManifest = await fetchManifest(querySearchManifest);
 		const computeResult = await computeDiff(
 			sourceManifest.files,
 			targetManifest.files
@@ -145,9 +145,15 @@
   /**
    * PROMPT
    */
-  const showSearchManifestPrompt = ref(false);
-  async function handleSearchManifestPrompt(){
-    showSearchManifestPrompt.value = true;
+  const showGeneralPrompt = ref(false);
+  let promptActionResolve = (v:string) => {};
+  async function onPromptOpen():Promise<string>{
+    return new Promise((resolve) => {
+      promptActionResolve = resolve;
+    })  
+  }
+  async function onPromptResult(value:string | null){
+    promptActionResolve(value ?? '');
   }
 </script>
 
@@ -275,14 +281,14 @@
 		</div>
 
 		<!-- Prompt -->
-		<SearchManifestPrompt
-			v-model="showSearchManifestPrompt"
+		<GeneralPrompt
+			v-model="showGeneralPrompt"
 			title="Get Manifest"
 			message="Masukkan id, hash, source, version, atau tag untuk mencari manifest:"
-			placeholder="Contoh: Projek ABC"
+			placeholder="label:v1.0.0"
 			ok-text="Buat"
 			cancel-text="Batal"
-			@result="handleSearchManifestPrompt"
+			@result="onPromptResult"
 		/>
 	</div>
 </template>

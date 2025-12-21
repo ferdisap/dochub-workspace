@@ -269,24 +269,30 @@
       placeholder="Contoh: Projek Q3"
       ok-text="Buat"
       cancel-text="Batal"
-      @result="handlePromptResult"
+      @result="onPromptResult"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import ModalPrompt from './ModalPrompt.vue';
+  import { ref } from 'vue';
+  import ModalPrompt from './ModalPrompt.vue';
 
-const showPrompt = ref(false);
+  const showPrompt = ref(false);
+  const showGeneralPrompt = ref(false);
+  
+  showPrompt.value = true; // opening prompt
+  const querySearchManifest = await onPromptOpen(); //waiting result
 
-const handlePromptResult = (value: string | null) => {
-  if (value !== null) {
-    console.log('User memasukkan:', value);
-    // Contoh: buat workspace
-    // createWorkspace({ name: value });
-  } else {
-    console.log('Prompt dibatalkan');
+  const promptResult = {
+    resolve: (v:string) => {},
   }
-};
+  async function onPromptOpen():Promise<string>{
+    return new Promise((resolve) => {
+      promptResult.resolve = resolve;
+    })  
+  }
+  async function onPromptResult(value:string | null){
+    promptResult.resolve(value ?? '');
+  }
 </script> -->

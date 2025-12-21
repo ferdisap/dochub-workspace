@@ -30,9 +30,14 @@ class ManifestVersionParser
     return Carbon::parse($ts)->format(self::$iso_format);
   }
 
+  public static function getPattern()
+  {
+    return '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/';
+  }
+
   private static function isIsoFormat($ts)
   {
-    $pattern = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/';
+    $pattern = self::getPattern();
 
     return preg_match($pattern, $ts) === 1 &&
       Carbon::createFromFormat('Y-m-d\TH:i:s.v\Z', $ts) !== false;

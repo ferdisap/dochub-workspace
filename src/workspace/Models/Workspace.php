@@ -2,6 +2,7 @@
 
 namespace Dochub\Workspace\Models;
 
+use Dochub\Workspace\Workspace as DochubWorkspace;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -21,6 +22,16 @@ class Workspace extends Model
     'name',
     'visibility'
   ];
+
+  protected static function boot()
+  {
+    parent::boot();
+
+    static::creating(function ($model) {
+      // clean name to valid form
+      $model->name = DochubWorkspace::cleanWorkspaceName($model->name);
+    });
+  }
 
   /** menghapus semua file (bukan hanya aktif file) di db*/
   public function deleteAllFiles()

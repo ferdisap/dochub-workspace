@@ -71,15 +71,18 @@ class Manifest extends Model
           "Invalid source format. Use 'type:identifier' (e.g., 'cms:client-a')"
         );
       }
-    });
-
-    static::creating(function ($manifest) {
-      // Normalisasi ke UTC ISO 8601
-      // if ($manifest->version) {
       if (!ManifestVersionParser::isValid($manifest->version)) {
         throw new \InvalidArgumentException("Invalid version timestamp");
       }
     });
+
+    // static::creating(function ($manifest) {
+    //   // Normalisasi ke UTC ISO 8601
+    //   // if ($manifest->version) {
+    //   if (!ManifestVersionParser::isValid($manifest->version)) {
+    //     throw new \InvalidArgumentException("Invalid version timestamp");
+    //   }
+    // });
 
     static::deleting(function ($manifest) {
       $path = WorkspaceManifest::path($manifest->storage_path);
@@ -129,9 +132,9 @@ class Manifest extends Model
   }
 
   // Relasi
-  public function merges()
+  public function merge()
   {
-    return $this->hasMany(Merge::class, 'manifest_hash', 'hash_tree_sha256');
+    return $this->hasOne(Merge::class, 'manifest_hash', 'hash_tree_sha256');
   }
 
   public function user()

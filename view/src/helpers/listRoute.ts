@@ -70,3 +70,12 @@ export function route_file_delete(hash:string, manifestId:string){
   // return `/dochub/file/delete/${hash}/${manifestId}`; // POST
   return `/dochub/file/delete/${manifestId}/${hash}`; // POST
 }
+
+/**
+ * -----------
+ * MANIFEST ROUTE
+ * -----------
+ */
+export function route_manifest_search(query:string){
+  return `/dochub/manifest/search?query=${query}`; // GET
+}

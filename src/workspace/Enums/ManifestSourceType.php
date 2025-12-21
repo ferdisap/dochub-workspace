@@ -24,6 +24,11 @@ enum ManifestSourceType: string
     return array_column(self::cases(), 'value');
   }
 
+  public static function getPattern()
+  {
+    return "/" . join("|", self::values()) . "/";
+  }
+
   // public static function make(self $source, string $identifier, ?string $environment = null, ?string $version = null):string
   // {
   //   $src = "{$source}:{$identifier}";

@@ -38,6 +38,38 @@ class Workspace
     return self::path("manifests");
   }
 
+  private static function getUnallowedNamePattern()
+  {
+    return '/([<>:"\/\\\\|?*]+)/';
+  }
+
+  public static function getNamePattern()
+  {
+    // pattern sesuai dengan windows OS path pattern
+    $allowedPattern = '/([^<>:"\/\\\\|?*]+)/'; // pattern yang BOLEH ada di name, yaitu selan karakter >>> <>:"\/\\\\|?* <<<
+    // $unAllowedPattern = '/([<>:"\/\\\\|?*]+)/'; // pattern yang TIDAK boleh ada di name
+    return $allowedPattern;
+  }
+
+  public static function isValidName(string $name)
+  {
+    return (preg_match(self::getNamePattern(), $name)) && (strlen($name) <= 191);
+  }
+
+  public static function getMaxLengthName()
+  {
+    return 191;
+  }
+
+  public static function cleanWorkspaceName(string $name)
+  {
+    if (!self::isValidName($name)) {
+      $new_string = preg_replace(self::getUnallowedNamePattern(), "", $name);
+      return substr($new_string, 0, self::getMaxLengthName());
+    } 
+    return $name;
+  }
+
   /**
    * Deteksi file berisiko
    */

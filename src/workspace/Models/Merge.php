@@ -2,6 +2,7 @@
 
 namespace Dochub\Workspace\Models;
 
+use Dochub\Workspace\Merge as WorkspaceMerge;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -44,6 +45,8 @@ class Merge extends Model
       if (! $model->getKey()) {
         $model->{$model->getKeyName()} = (string) Str::uuid();
       }
+      // clean label to valid form
+      $model->label = WorkspaceMerge::cleanLabel($model->label);
     });
   }
 
