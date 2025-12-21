@@ -1,3 +1,4 @@
+import { FileModel } from "../analyze/compare";
 import { DhBlob } from "./DhBlob";
 
 export interface DhFileParam extends FileSystemFileHandle {
@@ -8,11 +9,7 @@ export interface DhFolderParam extends FileSystemDirectoryHandle {
   relativePath?:string
 }
 
-export interface FileObject {
-  "relative_path": string,
-  "sha256": string,
-  "size_bytes": number,
-  "file_modified_at": number,
+export interface FileObject extends FileModel {
   "message"?:string,
 }
 
@@ -32,6 +29,7 @@ export class DhFile {
   }
 
   async getPath(){
+    let path:string;
     if(this.fileSystem.relativePath){
       return this.fileSystem.relativePath;
     } else {

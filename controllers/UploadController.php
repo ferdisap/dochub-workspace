@@ -63,9 +63,15 @@ class UploadController
     ]);
   }
 
-  public function getManifest(Request $request)
+  public function getManifest(Request $request, Manifest $manifest)
   {
-    $manifestModels = Manifest::where('from_id', $request->user()->id);
+    return response([
+      "manifest" => $manifest->content
+    ]);
+  }
+  public function getManifests(Request $request)
+  {
+    $manifestModels = Manifest::where('from_id', (string) $request->user()->id);
 
     // jika ada pencarian berdasarkan tags
     $tags = $request->get('tags');
@@ -76,7 +82,9 @@ class UploadController
       return $model->content;
     });
 
-    return response($manifestModels);
+    return response([
+      "manifests" => $manifestModels
+    ]);
   }
 
   private function deletingFile(Manifest $manifest, ModelsBlob $blob)
@@ -135,7 +143,7 @@ class UploadController
 
   public function list(Request $request)
   {
-    $manifest = Manifest::whereNull('workspace_id')->where('from_id', $request->user()->id)->where('source', 'LIKE', ManifestSourceType::UPLOAD->value . "%")->limit(env('upload.limit_file'))->get();
+    $manifest = Manifest::whereNull('workspace_id')->where('from_id', (string) $request->user()->id)->where('source', 'LIKE', ManifestSourceType::UPLOAD->value . "%")->limit(env('upload.limit_file'))->get();
     return response()->json([
       "list" => ResourcesUpload::collection($manifest),
     ]);
@@ -166,7 +174,7 @@ class UploadController
     $processId = $dhManifest->hash_tree_sha256;
     $filesize = $dhManifest->total_size_bytes;
     if ($filesize > (1 * 1024 * 1024)) {
-      $job = MakeWorkspaceFromZipJob::withId($manifest->toJson(), $request->user()->id);
+      $job = MakeWorkspaceFromZipJob::withId($manifest->toJson(), (string) $request->user()->id);
       dispatch($job)->onQueue('making-workspace-from-upload');
       $jobId = $job->id;
     } else {
@@ -176,7 +184,7 @@ class UploadController
       $data['manifest_model'] = $dataManifestModelSerialized;
       // $cache->set($processId, json_encode($data));
 
-      MakeWorkspaceFromZipJob::dispatchSync(json_encode($data), $request->user()->id);
+      MakeWorkspaceFromZipJob::dispatchSync(json_encode($data), (string) $request->user()->id);
       $processId = $manifest->hash_tree_sha256;
       // set job id to metadata
       $data = $cache->getArray($processId);

@@ -482,12 +482,13 @@ export class DhManifest {
   ): Promise<{ files: Set<DhFile> }> {
     await scanDirectory(dhFolderParam, dhFolderParam.name, async (entry, relativePath) => {
       if (entry.kind === 'file') {
+        (entry as DhFileParam).relativePath = relativePath;
         files.add(new DhFile(entry))
       }
       else if (entry.kind === 'directory') {
+        (entry as DhFolderParam).relativePath = relativePath;
         const ifIsDir = await this.ifDir(entry, files);
         files = new Set([...files, ...ifIsDir.files]);
-        // files.push(...ifIsDir.files);
       }
     })
     return {

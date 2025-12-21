@@ -23,7 +23,7 @@ return new class extends Migration
       $table->id();
       $table->foreignId('workspace_id')->nullable();
       $table->foreignId('from_id'); //->constrained('users');
-      $table->string('source');                // [jenis]:[identifier], 'client:xyz-backend', upload:abcdefg.zip, 
+      $table->string('source',255);                // [jenis]:[identifier], 'client:xyz-backend', upload:abcdefg.zip, 
       $table->string('version');               // v1.0.2
       $table->unsignedInteger('total_files');  // "2025-11-30T10:30:00Z",  timestamp otoritatif yang menjadi tulang punggung audit trail, rollback, dan deteksi konflik
       $table->unsignedBigInteger('total_size_bytes'); // file asli, sebelum di hash
@@ -92,7 +92,7 @@ return new class extends Migration
       // Jika action = 'deleted' → hapus file dari workspace live.
       // Jika action = 'added' → abaikan (karena di M2 belum ada).
       // Jika action = 'updated' → symlink blobs/{$file->blob_hash} ke $path.
-      $table->string('action')->default('added'); // added, updated, deleted
+      $table->string('action')->default('added'); 
       $table->unsignedBigInteger('size_bytes');
       // $table->timestamp('file_modified_at'); // mtime dari file asli
 

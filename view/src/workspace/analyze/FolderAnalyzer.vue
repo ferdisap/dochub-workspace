@@ -9,6 +9,9 @@
 	} from "./folderUtils";
 	import { DhFolderParam } from "../core/DhFile";
 	import { DhWorkspace } from "../core/DhWorkspace";
+	import { computeDiff, DiffResult } from "./compare";
+	import DiffSummary from "./DiffSummary.vue";
+	import SearchManifestPrompt from "../../components/Prompt/SearchManifestPrompt.vue";
 
 	const isAnalyzing = ref(false);
 	const folderRoot = ref<FileNode | null>(null);
@@ -33,11 +36,14 @@
 			dhFolderParam.value = await window.showDirectoryPicker();
 			selectedDirName.value = dhFolderParam.value.name;
 
-				const { worker, result } = await makeFileNodeByWorker(dhFolderParam.value,dhFolderParam.value.name);
-				dhFolderParam.value.relativePath = dhFolderParam.value.name;
-				folderRoot.value = result;
-				if(worker) worker.terminate();
-				isDone.value = true;
+			const { worker, result } = await makeFileNodeByWorker(
+				dhFolderParam.value,
+				dhFolderParam.value.name
+			);
+			dhFolderParam.value.relativePath = dhFolderParam.value.name;
+			folderRoot.value = result;
+			if (worker) worker.terminate();
+			isDone.value = true;
 		} catch (err) {
 			if ((err as Error).name === "AbortError") {
 				error.value = "Pengguna membatalkan pemilihan folder.";
@@ -69,13 +75,80 @@
 		return folderRoot.value ? countFiles(folderRoot.value) : 0;
 	});
 
-	async function makeManifest() {
+	/**
+	 * ------------------
+	 * CREATE AND BUILD MANIFEST
+	 * ------------------
+	 */
+
+	const loading = ref(false);
+	const diff = ref<DiffResult>({
+		identical: 0,
+		changed: 0,
+		added: 0,
+		deleted: 0,
+		total_changes: 0,
+		changes: [],
+	});
+	const compared = ref(false);
+
+	async function buildManifest() {
 		if (dhFolderParam.value) {
 			const workspace = new DhWorkspace(dhFolderParam.value);
 			const manifest = await workspace.getManifest();
-			console.log((top.manifest = manifest));
+			return manifest;
 		}
+		error.value = "Failed to build manifest";
+		throw new Error("Failed to build manifest");
 	}
+
+	async function fetchManifest(hash: string) {
+		return (await fetch(`/dochub/manifest/get/${hash}`).then((r) => r.json()))
+			.manifest;
+	}
+
+	async function downloadManifest(hash: string | null) {
+		const manifest = await (hash ? fetchManifest(hash) : buildManifest());
+		const jsonBlob = new Blob([JSON.stringify(manifest)], {
+			type: "application/json",
+		});
+		const url = URL.createObjectURL(jsonBlob);
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = "manifest.json";
+		a.style.display = "none";
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
+	}
+
+	async function compareManifest() {
+    compared.value = true;
+		loading.value = true;
+
+    // const sourceManifest = await handleSearchManifestPrompt();
+    // return;
+
+		const targetManifest = await buildManifest();
+		// const sourceManifest = await fetchManifest(
+		// 	"aa4d977d2bf8d2775ae3c2fc93e97d2455f4ff52f8b082b1e24f86bd7eb18ba7"
+		// );
+		const computeResult = await computeDiff(
+			sourceManifest.files,
+			targetManifest.files
+		);
+		diff.value = computeResult;
+		loading.value = false;
+	}
+
+  /**
+   * PROMPT
+   */
+  const showSearchManifestPrompt = ref(false);
+  async function handleSearchManifestPrompt(){
+    showSearchManifestPrompt.value = true;
+  }
 </script>
 
 <template>
@@ -175,16 +248,42 @@
 				</p>
 			</div>
 
-			<div class="mt-4 text-sm text-gray-500">
+			<div class="mt-4 text-sm text-gray-500 flex">
 				<button
-					@click="makeManifest"
+					@click="compareManifest"
 					:disabled="isAnalyzing"
-					class="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition flex items-center gap-2 disabled:opacity-50"
+					class="ml-2 mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition flex items-center gap-2 disabled:opacity-50"
 				>
-					Create Manifest
+					Compare Manifest
+				</button>
+				<button
+					@click="downloadManifest(null)"
+					:disabled="isAnalyzing"
+					class="ml-2 mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition flex items-center gap-2 disabled:opacity-50"
+				>
+					Download Manifest
 				</button>
 			</div>
 		</div>
+
+		<!-- Diff Summary -->
+		<div class="diff-summary mt-4" v-if="compared">
+			<h1 class="text-2xl font-bold text-slate-800 mb-6">
+				Perbandingan Workspace
+			</h1>
+			<DiffSummary :diff="diff" :loading="loading" />
+		</div>
+
+		<!-- Prompt -->
+		<SearchManifestPrompt
+			v-model="showSearchManifestPrompt"
+			title="Get Manifest"
+			message="Masukkan id, hash, source, version, atau tag untuk mencari manifest:"
+			placeholder="Contoh: Projek ABC"
+			ok-text="Buat"
+			cancel-text="Batal"
+			@result="handleSearchManifestPrompt"
+		/>
 	</div>
 </template>
 

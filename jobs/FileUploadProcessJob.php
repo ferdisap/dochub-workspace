@@ -47,7 +47,7 @@ class FileUploadProcessJob implements ShouldQueue
   protected NativeCache $cache;
 
   public string $metadata; // string json
-  public int $userId;
+  public string $userId;
 
   protected string $prefixPath = "upload";
   /**
@@ -61,7 +61,7 @@ class FileUploadProcessJob implements ShouldQueue
    * $data["job_uuid"]
    * $data['process_id']
    */
-  public function __construct(string $metadata, int $userId)
+  public function __construct(string $metadata, string $userId)
   {
     $this->metadata = $metadata;
     $this->userId = $userId;
@@ -73,7 +73,7 @@ class FileUploadProcessJob implements ShouldQueue
    * dispatch($job)->onQueue('uploads');
    * dd($job->id);
    */
-  public static function withId(string $metadata, int $userId): self
+  public static function withId(string $metadata, string $userId): self
   {
     $job = new static($metadata, $userId);
     $cache = new NativeCache();
@@ -201,7 +201,7 @@ class FileUploadProcessJob implements ShouldQueue
   public function storeManifestRecord(WorkspaceManifest $dhManifest, int $workspaceId = 0)
   {
     $manifestModel = null;
-    if(!($manifestModel = Manifest::where('hash_tree_sha256', $dhManifest->hash_tree_sha256)->first(['id']))){
+    if (!($manifestModel = Manifest::where('hash_tree_sha256', $dhManifest->hash_tree_sha256)->first(['id']))) {
       $fillable = [
         // workspace_id = null, berarti tidak terkait dengan worksapce
         'from_id' => $this->userId,
@@ -213,7 +213,7 @@ class FileUploadProcessJob implements ShouldQueue
         'storage_path' => $dhManifest->storage_path(),
         'tags' => $dhManifest->tags
       ];
-      if($workspaceId || (int) $workspaceId > 0) $fillable['workspace_id'] = $workspaceId;
+      if ($workspaceId || (int) $workspaceId > 0) $fillable['workspace_id'] = $workspaceId;
       $manifestModel = Manifest::create($fillable);
       return $manifestModel;
     }
@@ -224,24 +224,50 @@ class FileUploadProcessJob implements ShouldQueue
   {
     $blobPath = Blob::hashPath($hash);
     $fileId = EncryptStatic::deriveFileIdBin($blobPath, (string) $this->userId)['str'];
+    $relativePathWithPrefix = ($this->prefixPath ? $this->prefixPath . "/" : "") . $relativePath;
 
-    while(File::where('id', $fileId)->count() > 1){
-      $fileId = Str::uuid();
+    // should update
+    if (File::where([
+      'id' => $fileId,
+      'relative_path' => $relativePathWithPrefix,
+      'merge_id' => $mergeId, // walau uuid bisa disi 0
+    ])->count() > 0) {
+      File::update([
+        "id" => $fileId,
+        'relative_path' => $relativePathWithPrefix,
+        'merge_id' => $mergeId, // walau uuid bisa disi 0
+      ], [
+        'blob_hash' => $hash,
+        'workspace_id' => $workspaceId, // zero is nothing. Bisa saja untuk worksapce default
+        //'old_blob_hash', // nullable
+        // 'action' => 'upload', // walaupun fungsi ini dipakai di turunan, action tetap upload karena file asalnya adalah uploadan
+        'action' => 'updated', // added karena file di upload. 
+        'size_bytes' => $filesize,
+        'file_modified_at' => $mtime
+      ]);
+      return;
+    } 
+    // should create
+    else {
+      while (File::where('id', $fileId)->count() > 0) {
+        $fileId = Str::uuid()->toString();
+      }
+      File::create([
+        "id" => $fileId,
+        'relative_path' => $relativePathWithPrefix,
+        'merge_id' => $mergeId, // walau uuid bisa disi 0
+        'blob_hash' => $hash,
+        'workspace_id' => $workspaceId, // zero is nothing. Bisa saja untuk worksapce default
+        //'old_blob_hash', // nullable
+        // 'action' => 'upload', // walaupun fungsi ini dipakai di turunan, action tetap upload karena file asalnya adalah uploadan
+        'action' => 'added', // added karena file di upload. 
+        'size_bytes' => $filesize,
+        'file_modified_at' => $mtime
+      ]);
+      return;
     }
 
-    File::updateOrCreate([
-      "id" => $fileId,
-      'relative_path' => ($this->prefixPath ? $this->prefixPath . "/" : "") . $relativePath, // unique
-      'merge_id' => $mergeId, // walau uuid bisa disi 0
-    ],[
-      'blob_hash' => $hash,
-      'workspace_id' => $workspaceId, // zero is nothing. Bisa saja untuk worksapce default
-      //'old_blob_hash', // nullable
-      // 'action' => 'upload', // walaupun fungsi ini dipakai di turunan, action tetap upload karena file asalnya adalah uploadan
-      'action' => 'added', // added karena file di upload. 
-      'size_bytes' => $filesize,
-      'file_modified_at' => $mtime
-    ]);
+
   }
 
   /**
@@ -255,7 +281,8 @@ class FileUploadProcessJob implements ShouldQueue
   {
     $blob = new Blob();
     $totalprocessed = 0;
-    $source = ManifestSourceParser::makeSource(ManifestSourceType::UPLOAD->value, "user-{$this->userId}");
+    $userIdentifierhashed = EncryptStatic::hash($this->userId);
+    $source = ManifestSourceParser::makeSource(ManifestSourceType::UPLOAD->value, "user-{$userIdentifierhashed}");
     return $blob->store(
       $this->userId,
       $source,
@@ -328,7 +355,7 @@ class FileUploadProcessJob implements ShouldQueue
       $dhManifest->tags = $metadata['tags'] ?? null;
 
       // #3. create record of manifest
-      if($this->storeManifestRecord($dhManifest)){        
+      if ($this->storeManifestRecord($dhManifest)) {
         $dhManifest->store(); // save to local
 
         // #4. create record of files from blob

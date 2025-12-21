@@ -18,8 +18,8 @@ export class DhWorkspace {
   private async setManifest()
   {
     const { userEmail } = await useAuthData();
-    const userId = hash(userEmail);
-    const source = ManifestSourceParser.makeSource(ManifestSourceType.UPLOAD, userId.toString());
+    const userIdentifierhashed = hash(userEmail);
+    const source = ManifestSourceParser.makeSource(ManifestSourceType.UPLOAD, `user-${userIdentifierhashed}`);
     const version = ManifestVersionParser.makeVersion();
     const dhManifest = new DhManifest(source, version);
     this.manifest = await dhManifest.toObject(this.dhWorkspaceParam);

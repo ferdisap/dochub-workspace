@@ -172,13 +172,13 @@ class UploadNativeController extends UploadController
     $filesize = (int) $data["file_size"];
     // jika lebih dari 1 mb maka pakai worker
     if ($filesize > (1 * 1024 * 1024)) {
-      $job = FileUploadProcessJob::withId(json_encode($data), Auth::user()->id); // file di upload dengan namepsace "upload/{$subpath}", bukan "workspace" di File model
+      $job = FileUploadProcessJob::withId(json_encode($data), (string) Auth::user()->id); // file di upload dengan namepsace "upload/{$subpath}", bukan "workspace" di File model
       dispatch($job)->onQueue('uploads');
       $jobId = $job->id;
     } else {
       try {
-        // ZipProcessJob::dispatchSync(json_encode($data), Auth::user()->id);
-        FileUploadProcessJob::dispatchSync(json_encode($data), Auth::user()->id);
+        // ZipProcessJob::dispatchSync(json_encode($data), (string) Auth::user()->id);
+        FileUploadProcessJob::dispatchSync(json_encode($data), (string) Auth::user()->id);
         // set job id to metadata
         $data = $this->cache->getArray($uploadId);
         $data["job_id"] = 0;

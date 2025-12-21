@@ -2,7 +2,9 @@
 
 namespace Dochub\Workspace\Consoles;
 
+use Dochub\Workspace\Blob;
 use Dochub\Workspace\Models\File;
+use Dochub\Workspace\Models\Manifest;
 use Dochub\Workspace\Models\Merge;
 use Dochub\Workspace\Workspace;
 use Illuminate\Console\Command;
@@ -41,6 +43,8 @@ use SebastianBergmann\Diff\Output\UnifiedDiffOutputBuilder;
 
 class WorkspaceCompareCommand extends Command
 {
+  protected $maxSizeBytesDiffPreview = 10240; // 10Kb
+
   protected $signature = 'workspace:compare 
                             {source : ID workspace/merge pertama (format: w:1 atau m:abc123)}
                             {target : ID workspace/merge kedua (format: w:2 atau m:def456)}
@@ -137,10 +141,13 @@ class WorkspaceCompareCommand extends Command
 
   private function parseSpec(string $spec): array
   {
-    if (preg_match('/^w:(\d+)$/', $spec, $m)) {
+    if (preg_match('/^workspace:(\d+)$/', $spec, $m)) {
       return ['workspace', (int) $m[1]];
     }
-    if (preg_match('/^m:([a-f0-9\-]+)$/', $spec, $m)) {
+    else if (preg_match('/^manifest:(\d+)$/', $spec, $m)) {
+      return ['manifest', (int) $m[1]];
+    }
+    else if (preg_match('/^merge:([a-f0-9\-]+)$/', $spec, $m)) {
       return ['merge', $m[1]];
     }
     throw new \InvalidArgumentException("Format tidak valid: {$spec}. Gunakan w:123 atau m:abc-def");
@@ -148,18 +155,32 @@ class WorkspaceCompareCommand extends Command
 
   private function getFiles(string $type, $id): \Illuminate\Support\Collection
   {
-    return match ($type) {
-      'workspace' => File::where([
-        'workspace_id' => $id,
-        'merge_id' => Merge::where('workspace_id', $id)
-          ->latest('merged_at')
-          ->value('id')
-      ])->get(),
-      'merge' => File::where('merge_id', $id)->get(),
-      default => throw new \RuntimeException("Tipe tidak dikenal: {$type}")
-    };
+    switch ($type) {
+      case 'merge': 
+        return File::where('merge_id', $id)->get();
+      case 'workspace': 
+        return File::where([
+          'workspace_id' => $id,
+          'merge_id' => Merge::where('workspace_id', $id)
+            ->latest('merged_at')
+            ->value('id')
+        ])->get();
+      case 'manifest':
+        return File::where([
+          'workspace_id' => Manifest::where('id', $id)->value('workspace_id'),
+          'merge_id'=> Merge::where('manifest_hash', Manifest::where('id', $id)->value('hash_tree_sha256'))->value('id')
+        ])->get();
+      default:
+        return throw new \RuntimeException("Tipe tidak dikenal: {$type}");
+      }
   }
 
+  /**
+   * Di compute berdasarkan path file. 
+   * Jika path berbeda meski blob sama berarti = di "added" / "delete"
+   * Jika path sama dan blob sama berarti = identik
+   * Otherwise = "updated"
+   */
   private function computeDiff($sourceFiles, $targetFiles): array
   {
     $sourceMap = $sourceFiles->keyBy('relative_path');
@@ -177,6 +198,7 @@ class WorkspaceCompareCommand extends Command
         $changes->push([
           'action' => 'added',
           'path' => $path,
+          'blob' => $file->blob_hash, // blob ini sifatnya optional.
           'size_change' => $file->size_bytes,
         ]);
         $added++;
@@ -185,16 +207,19 @@ class WorkspaceCompareCommand extends Command
 
     // File di source
     foreach ($sourceMap as $path => $sourceFile) {
+      // Dihapus
       if (!$targetMap->has($path)) {
-        // Dihapus
         $changes->push([
           'action' => 'deleted',
           'path' => $path,
+          'blob' => $file->blob_hash, // blob ini sifatnya optional.
           'size_change' => -$sourceFile->size_bytes,
         ]);
         $deleted++;
-      } else {
+      } 
+      else {
         $targetFile = $targetMap->get($path);
+        // identik yaitu path dan blob SAMA
         if ($sourceFile->blob_hash === $targetFile->blob_hash) {
           $identical++;
         } else {
@@ -206,8 +231,8 @@ class WorkspaceCompareCommand extends Command
             'size_change' => $sizeDiff,
           ];
 
-          // Tambahkan diff preview untuk file teks kecil
-          if ($this->option('diff') && $targetFile->size_bytes < 10240) {
+          // Tambahkan diff preview untuk file teks kecil (10 kb)
+          if ($this->option('diff') && $targetFile->size_bytes < $this->maxSizeBytesDiffPreview) {
             $change['diff_preview'] = $this->generateDiffPreview(
               $sourceFile->blob_hash,
               $targetFile->blob_hash
@@ -233,9 +258,11 @@ class WorkspaceCompareCommand extends Command
   {
     try {
       // $oldPath = storage_path("app/private/dochub/blobs/" . substr($oldHash, 0, 2) . "/{$oldHash}");
-      $oldPath = Workspace::blobPath() . "/" . substr($oldHash, 0, 2) . "/{$oldHash}";
+      // $oldPath = Workspace::blobPath() . "/" . substr($oldHash, 0, 2) . "/{$oldHash}";
+      $oldPath = Blob::hashPath($oldHash);
       // $newPath = storage_path("app/private/dochub/blobs/" . substr($newHash, 0, 2) . "/{$newHash}");
-      $newPath = Workspace::blobPath() . "/" . substr($newHash, 0, 2) . "/{$newHash}";
+      // $newPath = Workspace::blobPath() . "/" . substr($newHash, 0, 2) . "/{$newHash}";
+      $newPath = Blob::hashPath($newHash);
 
       if (!file_exists($oldPath) || !file_exists($newPath)) {
         return "[file tidak ditemukan]";

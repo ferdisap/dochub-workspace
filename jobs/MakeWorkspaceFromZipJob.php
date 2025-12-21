@@ -36,11 +36,11 @@ class MakeWorkspaceFromZipJob extends FileUploadProcessJob implements ShouldQueu
   public string $uuid = ''; // jika fail bisa dicari tahu di table failed_jobs
 
   // public string $manifestModelSerialized; // string json
-  public int $userId;
+  public string $userId;
 
   protected string $prefixPath = "";
 
-  public static function withId(string $manifestModelSerialized, int $userId): self
+  public static function withId(string $manifestModelSerialized, string $userId): self
   {
     $dataManifestModelSerialized = json_decode($manifestModelSerialized, true);
     $processId = $dataManifestModelSerialized['hash_tree_sha256'];

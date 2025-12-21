@@ -69,6 +69,7 @@ Schema::create('dochub_files', function (Blueprint $table) {
     // Jika action = 'updated' → symlink blobs/{$file->blob_hash} ke $path.
     // umumnya jika updated tidak mengubah blobs. Tapi jika mengubah blob, maka manifest terkait workspace_id ini harus diubah juga, lalu merge terkait workspace_id juga harus diubah manifest_hash nya karena hash nya pasti berubah juga.
     // oleh karena itu perubahan action ini seperti tidak terlacak saat audit trail. Sehingga sangat tidak disarankan mengubah kolom blob_hash untuk action update
+    // Diulangi lagi. Status action TIDAK` boleh diubah. Seandainya ada updating, akan membuat record baru dengan fileId yang berbeda dan merging id berbeda, bahkan untuk sekedar mengubah file path.
     $table->string('action')->default('added') // 'added', 'updated', 'deleted'. 
         ->comment("How this file changed in this merge");
     
