@@ -23,6 +23,8 @@ class NativeCache implements Cacheable, LockContract, CacheCleanup
   // 🔑 Inject lock manager (opsional: gunakan hanya untuk driver yang butuh)
   protected LockManager $lockManager;
 
+  protected string $_userId = '';
+
   public function __construct()
   {
     // Jika ada store custom, gunakan.
@@ -34,6 +36,11 @@ class NativeCache implements Cacheable, LockContract, CacheCleanup
     $this->lockManager = app(LockManager::class);
   }
 
+  public function userId(?string $id = null)
+  {
+    return $id ? ($this->_userId = $id) : $this->_userId;
+  }
+
   public function driver(?string $d = null)
   {
     return $d ? ($this->_driver = $d) : $this->_driver;
@@ -41,7 +48,7 @@ class NativeCache implements Cacheable, LockContract, CacheCleanup
 
   public function get(string $key, bool $withExpired = false)
   {
-    $cacheKey = $this->_prefix . $key;
+    $cacheKey = $this->_prefix . $this->_userId . $key;
 
     // Laravel cache otomatis drop expired data
     // $key === $uploadId;
@@ -62,7 +69,7 @@ class NativeCache implements Cacheable, LockContract, CacheCleanup
 
   public function set(string $key, $value)
   {
-    $cacheKey = $this->_prefix . $key;
+    $cacheKey = $this->_prefix . $this->_userId . $key;
 
     // Simpan dengan TTL
     $this->store->put($cacheKey, $value, $this->ttl);

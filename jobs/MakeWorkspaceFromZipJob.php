@@ -48,8 +48,9 @@ class MakeWorkspaceFromZipJob extends FileUploadProcessJob implements ShouldQueu
     $data['manifest_model'] = $dataManifestModelSerialized;
 
     $job = new static(json_encode($data), $userId);
-    Event::listen(JobQueued::class, function (JobQueued $event) use (&$job, $manifestModelSerialized, $data) {
+    Event::listen(JobQueued::class, function (JobQueued $event) use (&$job, $manifestModelSerialized, $data, $userId) {
       $cache = new NativeCache();
+      $cache->userId($userId);
       // set job id for job class
       $job->id = $event->id;
       $job->uuid = $event->payload()["uuid"];
@@ -77,6 +78,7 @@ class MakeWorkspaceFromZipJob extends FileUploadProcessJob implements ShouldQueu
   public function handle()
   {
     $this->cache = new NativeCache();
+    $this->cache->userId($this->userId);
     $data = json_decode($this->metadata, true);
     if (!isset($this->processId)) {
       $this->processId = $data['process_id'];

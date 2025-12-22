@@ -20,6 +20,7 @@ use Dochub\Workspace\Services\BlobLocalStorage;
 use Dochub\Workspace\Services\ManifestLocalStorage;
 use Dochub\Workspace\Services\ManifestVersionParser;
 use Dochub\Workspace\Workspace as DochubWorkspace;
+use Error;
 use Exception;
 use Illuminate\Container\Attributes\Auth;
 use Illuminate\Database\Eloquent\Builder;
@@ -28,6 +29,14 @@ use Illuminate\Support\Facades\Log;
 
 class UploadController
 {
+  protected NativeCache $cache;
+
+  public function __construct()
+  {
+    $this->cache = new NativeCache();
+    $this->cache->userId(request()->user()->id);
+  }
+
   public function formView(Request $request)
   {
     return view('vendor.dochub.upload.app', [
@@ -54,7 +63,7 @@ class UploadController
   /**
    * Get upload configuration
    */
-  public function getConfig()
+  public static function getConfig()
   {
     $driver = config('upload.default');
     return response()->json([
@@ -63,95 +72,8 @@ class UploadController
       'max_size' => config('upload.max_size'),
       'chunk_size' => config('upload.chunk_size'),
       'expiration' => config('upload.expiration'),
-      'tus_enabled' => class_exists(\TusPhp\Tus\Server::class) && ($driver === 'tus'),
-      'redis_available' => $this->isRedisAvailable(),
-    ]);
-  }
-
-  // public function getManifest(Request $request, Manifest $manifest)
-  // {
-  //   return response([
-  //     "manifest" => $manifest->content
-  //   ]);
-  // }
-
-  // http://localhost:1001/dochub/manifest/search?query=hash:aa4d977d2bf8d2775ae3c2fc93e97d2455f4ff52f8b082b1e24f86bd7eb18ba7
-  // http://localhost:1001/dochub/manifest/search?query=source:upload:user-d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35
-  public function searchManifest(Request $request)
-  {
-    $qType = null;
-    $qString = null;
-    $request->validate([
-      "query" => [
-        'required',
-        function (string $attribute, mixed $value, Closure $fail) use(&$qType, &$qString) {
-          $re = '/(name|version|source|hash|label):(.+)/';
-          preg_match($re, $value, $matches, PREG_OFFSET_CAPTURE, 0);
-          if(!(isset($matches[1][0]) && isset($matches[2][0]))){
-            $fail("{$attribute} value not suitable with {$re}");
-          }
-          $type = $matches[1][0];
-          $qVal = $matches[2][0];
-          switch ($type) {
-            case 'name':
-              if(!(DochubWorkspace::isValidName($qVal))) $fail("{$attribute} value type must be " . DochubWorkspace::getNamePattern(). " and max. length is " . DochubWorkspace::getMaxLengthName()) . " character";
-              break;
-            case 'version': 
-              if(!(ManifestVersionParser::isValid($qVal))) $fail('{$attribute} value type must be ' . ManifestVersionParser::getPattern());
-              break;
-            case 'source': 
-              if(!(ManifestSourceType::isValid($qVal))) $fail('{$attribute} value type must be ' . ManifestSourceType::getPattern());
-              break;
-            case 'hash': 
-              if((strlen($qVal) !== 64)) $fail('{$attribute} value type must be 64 length lower case letter [a-z]');
-              break;
-            case 'label': 
-              if(!(Merge::isValidLabel($qVal))) $fail('{$attribute} value type must be ' . Merge::getLabelPattern() . " and max. length is " . Merge::getMaxLengthLabel()) . " character";
-              break;
-          }
-          $qType = $type;
-          $qString = $qVal;
-        },
-      ],
-    ]);
-
-    $manifestModel = (match ($qType) {
-      'name' => Manifest::where('workspace_id', Workspace::where('name', $qString)->where("owner_id", $request->user()->id)->value('id'))->first(),
-      'version' => Manifest::where('version', $qString)->first(),
-      'source' => Manifest::where('source', $qString)->first(),
-      'hash' => Manifest::where('hash_tree_sha256', $qString)->first(),
-      'label' => Manifest::whereHas('merge', function(Builder $query) use($qString) {
-        $query->where('label', $qString);
-      })
-    })
-    ->where('from_id', $request->user()->id)
-    ->first();
-
-    if($manifestModel){
-      return response([
-        "manifest" => $manifestModel->content
-      ]);
-    } else {
-      return response(null, 404);
-    }
-
-  }
-
-  public function getManifests(Request $request)
-  {
-    $manifestModels = Manifest::where('from_id', (string) $request->user()->id);
-
-    // jika ada pencarian berdasarkan tags
-    $tags = $request->get('tags');
-    if ($tags) $manifestModels->where('tags', 'LIKE', "%{$tags}%");
-    $manifestModels = $manifestModels->get(['storage_path']);
-
-    $manifestModels = collect($manifestModels)->map(function ($model) {
-      return $model->content;
-    });
-
-    return response([
-      "manifests" => $manifestModels
+      // 'tus_enabled' => class_exists(\TusPhp\Tus\Server::class) && ($driver === 'tus'),
+      // 'redis_available' => $this->isRedisAvailable(),
     ]);
   }
 
@@ -246,19 +168,18 @@ class UploadController
       dispatch($job)->onQueue('making-workspace-from-upload');
       $jobId = $job->id;
     } else {
-      $cache = new NativeCache();
       $dataManifestModelSerialized = $manifest->toArray();
       $data['process_id'] = $processId;
       $data['manifest_model'] = $dataManifestModelSerialized;
-      // $cache->set($processId, json_encode($data));
+      // $this->cache->set($processId, json_encode($data));
 
       MakeWorkspaceFromZipJob::dispatchSync(json_encode($data), (string) $request->user()->id);
       $processId = $manifest->hash_tree_sha256;
       // set job id to metadata
-      $data = $cache->getArray($processId);
+      $data = $this->cache->getArray($processId);
       $data["job_id"] = 0;
       // save metadata to cache
-      $cache->set($processId, $data);
+      $this->cache->set($processId, $data);
     }
 
     return response()->json([
@@ -276,8 +197,7 @@ class UploadController
    */
   public function getMakeWorkspaceStatus(Request $request, string $id)
   {
-    $cache = new NativeCache();
-    $data = $cache->getArray($id);
+    $data = $this->cache->getArray($id);
 
     // dd($data);
     if (count($data) < 1) {
@@ -295,7 +215,7 @@ class UploadController
 
       // 🔑 Auto-cleanup dari cache jika sudah selesai
       // $cleaned = true; // untuk debut, sehingga tidak dihapus (overwrite)
-      $cleaned = $cache->cleanupIfCompleted($id, $data); // sebenernya ngapus file uploadan (chunk), jadi kita tambahkan script untuk hapus file manual
+      $cleaned = $this->cache->cleanupIfCompleted($id, $data); // sebenernya ngapus file uploadan (chunk), jadi kita tambahkan script untuk hapus file manual
 
       $data_return = $data;
       unset($data_return['blob_model']);
@@ -323,8 +243,8 @@ class UploadController
     ]);
   }
 
-  private function isRedisAvailable(): bool
-  {
-    return RedisCache::isAvailable();
-  }
+  // private function isRedisAvailable(): bool
+  // {
+  //   return RedisCache::isAvailable();
+  // }
 }

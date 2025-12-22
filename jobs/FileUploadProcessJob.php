@@ -227,16 +227,12 @@ class FileUploadProcessJob implements ShouldQueue
     $relativePathWithPrefix = ($this->prefixPath ? $this->prefixPath . "/" : "") . $relativePath;
 
     // should update
-    if (File::where([
+    if ($file = File::where([
       'id' => $fileId,
       'relative_path' => $relativePathWithPrefix,
       'merge_id' => $mergeId, // walau uuid bisa disi 0
-    ])->count() > 0) {
-      File::update([
-        "id" => $fileId,
-        'relative_path' => $relativePathWithPrefix,
-        'merge_id' => $mergeId, // walau uuid bisa disi 0
-      ], [
+    ])->first()) {
+      $file->update([
         'blob_hash' => $hash,
         'workspace_id' => $workspaceId, // zero is nothing. Bisa saja untuk worksapce default
         //'old_blob_hash', // nullable
@@ -276,6 +272,7 @@ class FileUploadProcessJob implements ShouldQueue
    * jadi filemtime blob sama dengan filemtime aslinya Ini menghindari hash blob yang berbeda jika ada file yang sama di upload
    * sebelum blob dibuat, hash yang menggunakan filemtime akan menggunakan filemtime aslinya.
    * jadi dipastikan hasil hashnya sama jika filemtime nya sama
+   * @param array $files adalah [$relativePath (key) => $absolutePath (value)];
    */
   public function processFilesToBlobs(array $files, array &$result, bool $unlinkIfSuccess = true): WorkspaceManifest
   {
@@ -319,6 +316,7 @@ class FileUploadProcessJob implements ShouldQueue
   public function handle()
   {
     $this->cache = new NativeCache();
+    $this->cache->userId($this->userId);
 
     $metadata = json_decode($this->metadata, true);
     $fileName = $metadata['file_name'];

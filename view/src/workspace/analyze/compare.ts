@@ -52,7 +52,8 @@ export interface ComputeDiffOptions {
 export async function computeDiff(
   sourceFiles: FileModel[],
   targetFiles: FileModel[],
-  options: ComputeDiffOptions = {}
+  options: ComputeDiffOptions = {},
+  onDiffed?: (sourceFile:FileModel | undefined, targetFile:FileModel | undefined) => void
 ): Promise<DiffResult> {
   const {
     maxDiffPreviewSize = 10 * 1024, // 10 KB
@@ -84,6 +85,7 @@ export async function computeDiff(
       });
       added++;
     }
+    if(onDiffed) onDiffed(undefined, targetFile);
   }
 
   // 2. Deleted & Changed: iterasi source
@@ -132,6 +134,7 @@ export async function computeDiff(
         changed++;
       }
     }
+    if(onDiffed) onDiffed(sourceFile, targetFile);
   }
 
   // Urutkan perubahan berdasarkan path (seperti Laravel)

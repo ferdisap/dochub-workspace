@@ -41,12 +41,13 @@ class Blob
     return self::path("{$subDir}/{$hash}");
   }
 
-  public function store(string $userId, string $source, array $files, callable $callback) :Manifest
+  /**
+   * @return \Dochub\Workspace\File[] $dhFiles
+   */
+  public function justStore(array $files, &$total_size_bytes = 0, callable $callback)
   {
     $processed = 0;
-    
-    $total_files = count($files);
-    $total_size_bytes = 0; // sebelum di hash
+    // $total_size_bytes = 0; // sebelum di hash
     // $hash_tree_sha256 = null;
     // $storage_path = null;
     $dhFiles = [];
@@ -79,10 +80,19 @@ class Blob
         throw $e;
         // $callback('', $relativePath, $filePath, $e, $processed, $total_files);
       }
-    } 
+    }
+    return $dhFiles; 
+  }
 
-    $dhFiles = array_map(fn ($dhFile) => $dhFile->toArray(), $dhFiles);
+  public function store(string $userId, string $source, array $files, callable $callback) :Manifest
+  {
+    $total_size_bytes = 0;
+    $dhFiles = array_map(
+      fn ($dhFile) => $dhFile->toArray(),
+      $this->justStore($files, $total_size_bytes, $callback)
+    );
     $version = ManifestVersionParser::makeVersion();
+    $total_files = count($files);
     $dhManifest = new Manifest(
       $source, $version, $total_files, $total_size_bytes, $dhFiles,
     );

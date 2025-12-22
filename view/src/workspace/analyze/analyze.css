@@ -1,1 +1,9 @@
 @import '../../upload/upload.css';
+
+.loading-roll-zone {
+	border: 2px dashed #ccc;
+	border-radius: 8px;
+	text-align: center;
+	transition: all 0.3s ease;
+	background: #fafafa;
+}

@@ -2,7 +2,6 @@
 	import { ref, computed } from "vue";
 	import FolderTreeNode from "./FolderTreeNode.vue";
 	import {
-		makeFileNode,
 		FileNode,
 		countFiles,
 		makeFileNodeByWorker,
@@ -12,25 +11,35 @@
 	import { computeDiff, DiffResult } from "./compare";
 	import DiffSummary from "./DiffSummary.vue";
 	import GeneralPrompt from "../../components/Prompt/GeneralPrompt.vue";
-  import { route_manifest_search } from "../../helpers/listRoute";
+	import { route_manifest_search } from "../../helpers/listRoute";
+	import AccumulativeProgress from "./AccumulativeProgress.vue";
+	import InlineNotification from "../../components/Notification/InlineNotification.vue";
 
 	const isAnalyzing = ref(false);
 	const folderRoot = ref<FileNode | null>(null);
 	const error = ref<string | null>(null);
 	const selectedDirName = ref<string>("");
-	const isDone = ref<boolean>(false);
-	const dhFolderParam = ref<DhFolderParam | null>(null);
+  const dhFolderParam = ref<DhFolderParam | null>(null);
+	const fileProcessedQty = ref(0);
+
+  // loading param
+  const isLoading = ref<boolean>(false);
+	const isDoneScanning = ref<boolean>(false);
+	const isDoneComparing = ref<boolean>(false);
+	const visibilityNotification = ref<boolean>(false);
 
 	// UI: format path (opsional)
-	const formatPath = (path: string) => {
-		return path.split("/").slice(1).join(" / ");
-	};
+	// const formatPath = (path: string) => {
+	// 	return path.split("/").slice(1).join(" / ");
+	// };
 
 	// Action: pilih & scan folder
-	async function analyzeFolder(): Promise<void> {
+	async function scanFolder(): Promise<void> {
 		isAnalyzing.value = true;
 		error.value = null;
 		folderRoot.value = null;
+    isDoneScanning.value = false;
+		isLoading.value = true;
 
 		try {
 			// @ts-ignore — types tersedia via `@types/wicg-file-system-access`
@@ -39,12 +48,16 @@
 
 			const { worker, result } = await makeFileNodeByWorker(
 				dhFolderParam.value,
-				dhFolderParam.value.name
+				dhFolderParam.value.name,
+				(entry) => {
+					fileProcessedQty.value++;
+				}
 			);
 			dhFolderParam.value.relativePath = dhFolderParam.value.name;
 			folderRoot.value = result;
 			if (worker) worker.terminate();
-			isDone.value = true;
+			isDoneScanning.value = true;
+			isLoading.value = false;
 		} catch (err) {
 			if ((err as Error).name === "AbortError") {
 				error.value = "Pengguna membatalkan pemilihan folder.";
@@ -81,8 +94,6 @@
 	 * CREATE AND BUILD MANIFEST
 	 * ------------------
 	 */
-
-	const loading = ref(false);
 	const diff = ref<DiffResult>({
 		identical: 0,
 		changed: 0,
@@ -104,7 +115,13 @@
 	}
 
 	async function fetchManifest(query: string) {
-		return (await fetch(route_manifest_search(query)).then((r) => r.json())).manifest;
+		return (
+			await fetch(route_manifest_search(query), {
+				headers: {
+					"X-Requested-With": "XMLHttpRequest",
+				},
+			}).then((r) => r.json())
+		).manifest;
 	}
 
 	async function downloadManifest(query: string | null) {
@@ -124,37 +141,76 @@
 	}
 
 	async function compareManifest() {
-    compared.value = true;
-		loading.value = true;
+		compared.value = true;
+    isDoneComparing.value = false;
+		isLoading.value = true;
 
-    showGeneralPrompt.value = true;
-    // eg: hash:aa4d977d2bf8d2775ae3c2fc93e97d2455f4ff52f8b082b1e24f86bd7eb18ba7
-    // eg: label:v1.0.0
-    const querySearchManifest = await onPromptOpen(); 
+		showGeneralPrompt.value = true;
+		// eg: hash:aa4d977d2bf8d2775ae3c2fc93e97d2455f4ff52f8b082b1e24f86bd7eb18ba7
+		// eg: label:v1.0.0
+		const querySearchManifest = await onPromptOpen();
 
 		const targetManifest = await buildManifest();
 		const sourceManifest = await fetchManifest(querySearchManifest);
+    fileProcessedQty.value = 0;
 		const computeResult = await computeDiff(
 			sourceManifest.files,
-			targetManifest.files
+			targetManifest.files,
+      {},
+      () => fileProcessedQty.value ++,
 		);
 		diff.value = computeResult;
-		loading.value = false;
+    console.log(computeResult);
+		resultNotification.value = {
+			message: "Compare success",
+			title: "Compare workspace",
+			type: "completed",
+		};
+    // await new Promise((r) => setTimeout(() => r(true),5000));
+		isDoneComparing.value = true;
+    isLoading.value = false;
+    visibilityNotification.value = true;
 	}
 
-  /**
-   * PROMPT
-   */
-  const showGeneralPrompt = ref(false);
-  let promptActionResolve = (v:string) => {};
-  async function onPromptOpen():Promise<string>{
-    return new Promise((resolve) => {
-      promptActionResolve = resolve;
-    })  
+	/**
+	 * PUSH MANIFEST
+	 */
+	async function pushManifest() {
+
   }
-  async function onPromptResult(value:string | null){
-    promptActionResolve(value ?? '');
-  }
+
+	/**
+	 * PROMPT
+	 */
+	const showGeneralPrompt = ref(false);
+	let promptActionResolve = (v: string) => {};
+	async function onPromptOpen(): Promise<string> {
+		return new Promise((resolve) => {
+			promptActionResolve = resolve;
+		});
+	}
+	async function onPromptResult(value: string | null) {
+		promptActionResolve(value ?? "");
+	}
+
+	/**
+	 * --------------
+	 * NOTIFICATION
+	 * --------------
+	 */
+
+	interface NotificationResult {
+		type: "completed" | "failed" | "processing" | "uploaded";
+		title: string;
+		message: string;
+		jobId?: string;
+	}
+
+	const resultNotification = ref<NotificationResult>({
+		type: "completed",
+		title: "Nothing",
+		message: "No message",
+	});
 </script>
 
 <template>
@@ -175,34 +231,41 @@
 		</div>
 
 		<!-- Action Zone -->
-		<div
-			v-if="!isDone"
-			class="upload-zone flex flex-col items-center justify-center py-12"
-			:class="{ 'cursor-not-allowed opacity-75': isAnalyzing }"
-		>
-			<p class="info text-lg font-medium text-gray-700">
-				{{
-					isAnalyzing
-						? "Sedang memindai..."
-						: "Klik tombol di bawah untuk memilih folder"
-				}}
-			</p>
+		<div v-if="!isDoneScanning"
+        class="upload-zone flex flex-col items-center justify-center py-12"
+        :class="{ 'cursor-not-allowed opacity-75': isAnalyzing }"
+      >
+      <p class="info text-lg font-medium text-gray-700">
+        {{
+          isAnalyzing
+            ? "Sedang memindai..."
+            : "Klik tombol di bawah untuk memilih folder"
+        }}
+      </p>
 
-			<p v-if="!isAnalyzing" class="hint mt-2">
-				Hanya didukung di Chrome/Edge (File System Access API)
-			</p>
+      <p v-if="!isAnalyzing" class="hint mt-2">
+        Hanya didukung di Chrome/Edge (File System Access API)
+      </p>
 
-			<p v-if="!isAnalyzing" class="hint mt-2">
-				Does not support symbolic link
-			</p>
+      <p v-if="!isAnalyzing" class="hint mt-2">
+        Does not support symbolic link
+      </p>
 
-			<button
-				@click="analyzeFolder"
-				:disabled="isAnalyzing"
-				class="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition flex items-center gap-2 disabled:opacity-50"
-			>
-				Pilih & Analisis Folder
-			</button>
+      <button
+        v-if="!isAnalyzing"
+        @click="scanFolder"
+        :disabled="isAnalyzing"
+        class="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition flex items-center gap-2 disabled:opacity-50"
+      >
+        Pilih & Analisis Folder
+      </button>
+
+      <AccumulativeProgress
+        :visible="isLoading"
+        :total="fileProcessedQty"
+        unit="scanned files"
+        class="mt-4"
+      />
 		</div>
 
 		<!-- Error Alert -->
@@ -260,24 +323,40 @@
 					:disabled="isAnalyzing"
 					class="ml-2 mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition flex items-center gap-2 disabled:opacity-50"
 				>
-					Compare Manifest
+					Compare
 				</button>
 				<button
 					@click="downloadManifest(null)"
 					:disabled="isAnalyzing"
 					class="ml-2 mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition flex items-center gap-2 disabled:opacity-50"
 				>
-					Download Manifest
+					Download
+				</button>
+				<button
+					@click="pushManifest"
+					:disabled="isAnalyzing"
+					class="ml-2 mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition flex items-center gap-2 disabled:opacity-50"
+				>
+					Push
 				</button>
 			</div>
 		</div>
+
+		<InlineNotification
+			:visible="visibilityNotification"
+			:message="resultNotification.message"
+			:title="resultNotification.title"
+			:type="resultNotification.type"
+      @close="visibilityNotification = false"
+		>
+		</InlineNotification>
 
 		<!-- Diff Summary -->
 		<div class="diff-summary mt-4" v-if="compared">
 			<h1 class="text-2xl font-bold text-slate-800 mb-6">
 				Perbandingan Workspace
 			</h1>
-			<DiffSummary :diff="diff" :loading="loading" />
+			<DiffSummary :diff="diff" :loading="!isDoneComparing" :total="fileProcessedQty"/>
 		</div>
 
 		<!-- Prompt -->

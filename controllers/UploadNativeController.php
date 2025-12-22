@@ -33,6 +33,12 @@ class UploadNativeController extends UploadController
   public function __construct()
   {
     $this->cache = new NativeCache();
+    $this->cache->userId(request()->user()->id);
+  }
+
+  public static function getDirectoryUpload(string $driverUpload, string $userId, string $uploadId)
+  {
+    return config("upload.driver.{$driverUpload}.root") . "/{$userId}/{$uploadId}";
   }
 
   public function checkChunk(Request $request)
@@ -75,7 +81,7 @@ class UploadNativeController extends UploadController
 
     // Buat direktori upload
     $driverUpload = config('upload.driver') === 'tus' ? 'tus' : 'native'; // walau auto adalah file
-    $uploadDir = config("upload.driver.{$driverUpload}.root") . "/{$uploadId}";
+    $uploadDir = self::getDirectoryUpload($driverUpload, $request->user()->id, $uploadId);
     if (!is_dir($uploadDir)) {
       mkdir($uploadDir, 0755, true);
     }
@@ -110,7 +116,7 @@ class UploadNativeController extends UploadController
     ]);
   }
 
-  private function convertToSecondsIfMilliseconds(int $timestamp)
+  public function convertToSecondsIfMilliseconds(int $timestamp)
   {
     if (!is_numeric($timestamp)) {
       return throw new \Exception("Timestamp must be integer", 1);
@@ -161,7 +167,7 @@ class UploadNativeController extends UploadController
 
     // Gabung chunk
     $driverUpload = config('upload.driver') === 'tus' ? 'tus' : 'native'; // walau auto adalah file
-    $uploadDir = config("upload.driver.{$driverUpload}.root") . "/{$uploadId}";
+    $uploadDir = self::getDirectoryUpload($driverUpload, $request->user()->id, $uploadId);
     $data['upload_dir'] = $uploadDir;
 
     // Update metadata
@@ -197,7 +203,7 @@ class UploadNativeController extends UploadController
     ]);
   }
 
-  private function check_progress(array $metadata): bool
+  public function check_progress(array $metadata): bool
   {
     return ($metadata['total_chunks'] ? ($metadata['uploaded_chunks'] ?? 0) / $metadata['total_chunks'] : 0) >= 1.0;
   }
@@ -262,7 +268,7 @@ class UploadNativeController extends UploadController
   //   return in_array($header, ["PK\x03\x04", "PK\x05\x06", "PK\x07\x08"], true);
   // }
 
-  private function isChunkHasUploaded(string $uploadId, $chunkId): bool
+  public function isChunkHasUploaded(string $uploadId, $chunkId): bool
   {
     $metadata = $this->cache->getArray($uploadId);
     return ((isset($metadata['chunks_id']) && in_array($chunkId, $metadata['chunks_id'])));

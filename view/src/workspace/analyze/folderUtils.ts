@@ -65,6 +65,7 @@ export async function scanDirectory(
   onFound: (entry: FileSystemFileHandle | FileSystemDirectoryHandle, relativePath: string) => Promise<undefined>
 ): Promise<undefined> {
   for await (const entry of dirHandle.values()) {
+    // await new Promise((r) => setTimeout(() => r(true),100));
     const entryPath = `${currentPath}/${entry.name}`;
     await onFound(entry, entryPath);
   }
@@ -73,6 +74,7 @@ export async function scanDirectory(
 export async function makeFileNode(
   dirHandle: DhFolderParam,
   currentPath: string,
+  onNode?:(entry: DhFileParam) => void,
 ): Promise<FileNode[]> {
   const nodes: FileNode[] = [];
 
@@ -89,10 +91,11 @@ export async function makeFileNode(
           kind: 'file',
           handler,
         });
+        if(onNode) onNode(entry);
       } else if (entry.kind === 'directory') {
         const handler = entry as DhFolderParam;
         handler.relativePath = relativePath;
-        let children = await makeFileNode(entry, relativePath);
+        let children = await makeFileNode(entry, relativePath, onNode);
         nodes.push({
           id: crypto.randomUUID(),
           name: entry.name,
@@ -123,6 +126,7 @@ export async function makeFileNode(
 export function makeFileNodeByWorker(
   dirHandle: DhFolderParam,
   currentPath: string,
+  onNode?:(entry: DhFileParam) => void,
 ): Promise<{ worker: Worker | null, result: FileNode }> {
   return new Promise(async (resolve, reject) => {
     let result: FileNode;
@@ -154,7 +158,7 @@ export function makeFileNodeByWorker(
       worker.onerror = (e) => reject(e);
     } catch (err) {
       // manual 
-      const children = await makeFileNode(dirHandle, currentPath);
+      const children = await makeFileNode(dirHandle, currentPath, onNode);
       const result = {
         id: "root",
         name: dirHandle.name,

@@ -1,8 +1,6 @@
 <?php
 
-use Dochub\Controller\EncryptFileController;
-use Dochub\Controller\UploadController;
-use Dochub\Controller\UploadNativeController;
+use Dochub\Controller\ManifestController;
 use Illuminate\Support\Facades\Route;
 
 
@@ -10,7 +8,6 @@ Route::prefix('dochub')->middleware([
   'web', 
   'throttle:100,1' // 100 chunk/menit
   ])->group(function () {
-  Route::get('/manifest/get', [UploadController::class, 'getManifests'])->middleware('auth')->name('dochub.get.manifests');
-  // Route::get('/manifest/get/{manifest:hash_tree_sha256}', [UploadController::class, 'getManifest'])->middleware('auth')->name('dochub.get.manifest');
-  Route::get('/manifest/search', [UploadController::class, 'searchManifest'])->middleware('auth')->name('dochub.search.manifest');
+  Route::get('/manifest/get', [ManifestController::class, 'getManifests'])->middleware('auth')->name('dochub.get.manifests');
+  Route::get('/manifest/search', [ManifestController::class, 'searchManifest'])->middleware('auth')->name('dochub.search.manifest');
 });

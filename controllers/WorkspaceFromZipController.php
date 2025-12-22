@@ -11,6 +11,9 @@ use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule; // Import the Rule facade
 
+/**
+ * @deprecated karena zip di upload lalu di cast to workspace
+ */
 class WorkspaceFromZipController
 {
   public function importFromZip(string $zipPath, string $name, int $ownerId)
