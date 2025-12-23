@@ -31,8 +31,7 @@ class ManifestLocalStorage
     // $path = now()->format('Y/m/') . Str::uuid() . '.json';
     // $path = Manifest::hashPath($manifest->hash_tree_sha256)now()->format('Y/m/') . Str::uuid() . '.json';
     // $path = Manifest::hashPathRelative($manifest->hash_tree_sha256) . "/manifest.json";
-    $path = self::path($manifest->hash_tree_sha256);
-    $fullPath = Manifest::path() . "/" . $path;
+    $fullPath = self::absoluteFullPath($manifest->hash_tree_sha256);
 
     // 2. Pastikan folder ada
     @mkdir(dirname($fullPath), 0755, true);
@@ -42,12 +41,18 @@ class ManifestLocalStorage
     file_put_contents($fullPath, json_encode($manifest, JSON_UNESCAPED_SLASHES));
 
     // 4. Return path relatif
-    return $path;
+    return self::path($manifest->hash_tree_sha256);;
   }
 
   private static function path(string $hash):string
   {
     return Manifest::hashPathRelative($hash) . "/manifest.json";
+  }
+
+  private static function absoluteFullPath(string $hash):string 
+  {
+    $path = self::path($hash);
+    return Manifest::path() . "/" . $path;
   }
 
   public function get(string $path): Manifest

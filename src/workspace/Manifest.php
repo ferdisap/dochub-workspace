@@ -119,6 +119,9 @@ class Manifest
     $subDir = substr($hash, 0, 2);
     return self::path("{$subDir}/{$hash}");
   }
+  /**
+   * tanpa nama file
+   */
   public static function hashPathRelative($hash)
   {
     $subDir = substr($hash, 0, 2);

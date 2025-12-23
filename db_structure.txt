@@ -110,7 +110,7 @@ Schema::create('dochub_merge_sessions', function (Blueprint $table) {
   $table->foreignId('target_workspace_id')->constrained('workspaces'); // tujuan merge
   $table->foreignUuid('result_merge_id')->nullable()->constrained('dochub_merges'); // ← tambahkan!
   $table->string('source_identifier'); // e.g., 'remote:client-abc', 'upload:20251126-abc.zip'
-  $table->string('source_type')->default('remote'); // 'remote', 'upload', 'manual', 'clone'
+  $table->string('source_type'); // 'remote', 'upload', 'manual', 'clone', 'rollback', 'push'
 
   $table->timestamp('started_at');
   $table->timestamp('completed_at')->nullable();

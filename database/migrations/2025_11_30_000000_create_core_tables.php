@@ -57,7 +57,7 @@ return new class extends Migration
       // $table->foreignId('result_merge_id')->nullable(); //->constrained('dochub_merges');
       $table->string('result_merge_id',36); //->constrained('dochub_merges');
       $table->string('source_identifier'); // e.g., 'remote:client-abc', 'upload:20251126-abc.zip', 'rollback:user_id:merge_id
-      $table->string('source_type')->default('remote'); // 'remote', 'upload', 'manual', 'rollback
+      $table->string('source_type'); // 'remote', 'upload', 'manual', 'clone', 'rollback', 'push'
       $table->timestamp('started_at');
       $table->timestamp('completed_at')->nullable();
       $table->string('status')->default('pending');  // pending, scanning, conflicts, resolved, applied, failed

@@ -2,6 +2,7 @@
 
 namespace Dochub\Workspace\Models;
 
+use Dochub\Workspace\File;
 use Dochub\Workspace\Manifest as WorkspaceManifest;
 use Dochub\Workspace\Services\ManifestLocalStorage;
 use Dochub\Workspace\Services\ManifestSourceParser;
@@ -89,6 +90,30 @@ class Manifest extends Model
       WorkspaceManifest::unlink($path);
     });
   }
+
+  public static function createByWsManifest(WorkspaceManifest $dhManifest, string $userId, string | null $workspaceId)
+  {
+    $fillable = [
+      'workspace_id' => $workspaceId,
+      'from_id' => $userId,
+      'source' => $dhManifest->source,
+      'version' => $dhManifest->version,
+      'total_files' => $dhManifest->total_files,
+      'total_size_bytes' => $dhManifest->total_size_bytes,
+      'hash_tree_sha256' => $dhManifest->hash_tree_sha256,
+      'storage_path' => $dhManifest->storage_path(),
+      'tags' => $dhManifest->tags
+    ];
+    return static::create($fillable);
+  }
+
+  // public static function createByManifestJson(array $manifest, string $userId, string | null $workspaceId, string | null $tags)
+  // {
+  //   $dhManifest = WorkspaceManifest::create($manifest);
+  //   $dhManifest->tags = $tags;
+  //   $dhManifest->store();
+  //   return self::createByWsManifest($dhManifest, $userId, $workspaceId);
+  // }
 
   // Accessor untuk parsing
   public function getSourceTypeAttribute(): string

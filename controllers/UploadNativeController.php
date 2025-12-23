@@ -43,8 +43,8 @@ class UploadNativeController extends UploadController
 
   public function checkChunk(Request $request)
   {
-    $uploadId = $request->header('X-Upload-ID');
-    $chunkId = $request->header('X-Chunk-ID');
+    $uploadId = $request->header('X-Upload-Id');
+    $chunkId = $request->header('X-Chunk-Id');
 
     if ($this->isChunkHasUploaded($uploadId, $chunkId)) {
       return response(null, 304);
@@ -146,7 +146,7 @@ class UploadNativeController extends UploadController
     // $mtime = Carbon::createFromTimestamp($request->input('file_mtime'));
     // touch($filePath, $mtime->timestamp);
 
-    $uploadId = $request->upload_id;
+    $uploadId = $request->input('upload_id');
 
     // Cek metadata
     $data = $this->cache->getArray($uploadId);
@@ -247,7 +247,7 @@ class UploadNativeController extends UploadController
 
     // Return status normal
     return response()->json([
-      'id' => $id,
+      'upload_id' => $id,
       'status' => $data['status'] ?? 'uploaded',
       // 'status' => 'processing', // untuk debug saja
       'file_name' => $data['file_name'] ?? null,

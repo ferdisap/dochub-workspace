@@ -41,6 +41,11 @@ class NativeCache implements Cacheable, LockContract, CacheCleanup
     return $id ? ($this->_userId = $id) : $this->_userId;
   }
 
+  private function getCacheKey(string $key)
+  {
+    return $this->_prefix . $this->_userId . $key;
+  }
+
   public function driver(?string $d = null)
   {
     return $d ? ($this->_driver = $d) : $this->_driver;
@@ -48,7 +53,7 @@ class NativeCache implements Cacheable, LockContract, CacheCleanup
 
   public function get(string $key, bool $withExpired = false)
   {
-    $cacheKey = $this->_prefix . $this->_userId . $key;
+    $cacheKey = $this->getCacheKey($key);
 
     // Laravel cache otomatis drop expired data
     // $key === $uploadId;
@@ -69,7 +74,7 @@ class NativeCache implements Cacheable, LockContract, CacheCleanup
 
   public function set(string $key, $value)
   {
-    $cacheKey = $this->_prefix . $this->_userId . $key;
+    $cacheKey = $this->getCacheKey($key);
 
     // Simpan dengan TTL
     $this->store->put($cacheKey, $value, $this->ttl);
@@ -79,7 +84,7 @@ class NativeCache implements Cacheable, LockContract, CacheCleanup
 
   public function delete(string $key): bool
   {
-    $cacheKey = $this->_prefix . $key;
+    $cacheKey = $this->getCacheKey($key);
     return $this->store->forget($cacheKey);
   }
 
@@ -214,11 +219,11 @@ class NativeCache implements Cacheable, LockContract, CacheCleanup
   ): bool {
     if (count($metadata) < 1) return true; // artinya sudah dibersihkan
 
-    $key = $this->_prefix . $uploadId;
+    $cacheKey = $this->getCacheKey($uploadId);
 
     try {
       // Hapus dari cache
-      $deleted = $this->store->forget($key);
+      $deleted = $this->store->forget($cacheKey);
 
       // Hapus file fisik jika ada (sama seperti RedisCleanupService)
       if (isset($metadata['process_id'])) {

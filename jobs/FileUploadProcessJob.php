@@ -8,6 +8,7 @@ use Dochub\Upload\Cache\NativeCache;
 use Dochub\Upload\Services\CacheCleanup;
 use Dochub\Workspace\Blob;
 use Dochub\Workspace\Enums\ManifestSourceType;
+use Dochub\Workspace\File as WorkspaceFile;
 use Dochub\Workspace\Manifest as WorkspaceManifest;
 use Dochub\Workspace\Models\File;
 use Dochub\Workspace\Models\Manifest;
@@ -201,25 +202,27 @@ class FileUploadProcessJob implements ShouldQueue
   public function storeManifestRecord(WorkspaceManifest $dhManifest, int $workspaceId = 0)
   {
     $manifestModel = null;
-    if (!($manifestModel = Manifest::where('hash_tree_sha256', $dhManifest->hash_tree_sha256)->first(['id']))) {
-      $fillable = [
-        // workspace_id = null, berarti tidak terkait dengan worksapce
-        'from_id' => $this->userId,
-        'source' => $dhManifest->source,
-        'version' => $dhManifest->version,
-        'total_files' => $dhManifest->total_files,
-        'total_size_bytes' => $dhManifest->total_size_bytes,
-        'hash_tree_sha256' => $dhManifest->hash_tree_sha256,
-        'storage_path' => $dhManifest->storage_path(),
-        'tags' => $dhManifest->tags
-      ];
-      if ($workspaceId || (int) $workspaceId > 0) $fillable['workspace_id'] = $workspaceId;
-      $manifestModel = Manifest::create($fillable);
-      return $manifestModel;
+    if (!($manifestModel = Manifest::where('hash_tree_sha256', $dhManifest->hash_tree_sha256)->where("from_id", $this->userId)->count() > 0)) {
+      return Manifest::createByWsManifest($dhManifest, $this->userId, $workspaceId ? $workspaceId : null);
+      // $fillable = [
+      //   // workspace_id = null, berarti tidak terkait dengan worksapce
+      //   'from_id' => $this->userId,
+      //   'source' => $dhManifest->source,
+      //   'version' => $dhManifest->version,
+      //   'total_files' => $dhManifest->total_files,
+      //   'total_size_bytes' => $dhManifest->total_size_bytes,
+      //   'hash_tree_sha256' => $dhManifest->hash_tree_sha256,
+      //   'storage_path' => $dhManifest->storage_path(),
+      //   'tags' => $dhManifest->tags
+      // ];
+      // if ($workspaceId || (int) $workspaceId > 0) $fillable['workspace_id'] = $workspaceId;
+      // $manifestModel = Manifest::create($fillable);
+      // return $manifestModel;
     }
     return $manifestModel;
   }
 
+  /** @deprecated */
   public function storeFileRecordFromBlob(string $hash, string $relativePath, int $filesize, int $mtime, int $workspaceId = 0, string $mergeId = '0')
   {
     $blobPath = Blob::hashPath($hash);
@@ -227,6 +230,7 @@ class FileUploadProcessJob implements ShouldQueue
     $relativePathWithPrefix = ($this->prefixPath ? $this->prefixPath . "/" : "") . $relativePath;
 
     // should update
+    // ini deprecated, karena harusnya tidak bisa update karena setiap file baru akan di push dengan id berbeda, walaupun hanya berbeda path
     if ($file = File::where([
       'id' => $fileId,
       'relative_path' => $relativePathWithPrefix,
@@ -358,7 +362,8 @@ class FileUploadProcessJob implements ShouldQueue
 
         // #4. create record of files from blob
         foreach ($dhManifest->files as $dhFile) {
-          $this->storeFileRecordFromBlob($dhFile["sha256"], $dhFile["relative_path"], $dhFile["size_bytes"], $dhFile["file_modified_at"]);
+          // $this->storeFileRecordFromBlob($dhFile["sha256"], $dhFile["relative_path"], $dhFile["size_bytes"], $dhFile["file_modified_at"]);
+          File::createFromWsFile($dhFile, $this->userId, null, 0);
         }
       }
 

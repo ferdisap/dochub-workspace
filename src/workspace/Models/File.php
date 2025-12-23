@@ -2,6 +2,8 @@
 
 namespace Dochub\Workspace\Models;
 
+use Dochub\Encryption\EncryptStatic;
+use Dochub\Workspace\File as WorkspaceFile;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
@@ -38,6 +40,32 @@ class File extends Model
         $model->id = (string) Str::uuid();
       }
     });
+  }
+
+  public static function createFromWsFile(WorkspaceFile $dhFile, string $userId, string | null $workspaceId = null, int $mergeId = 0)
+  {
+    $hash = $dhFile->sha256;
+    $blobPath = Blob::hashPath($hash);
+    $fileId = EncryptStatic::deriveFileIdBin($blobPath, (string) $userId)['str'];
+    $relativePath = $dhFile->relative_path;
+    $size_bytes = $dhFile->size_bytes;
+    $file_modified_at = $dhFile->file_modified_at;
+    while (File::where('id', $fileId)->count() > 0) {
+      $fileId = Str::uuid()->toString();
+    }
+    $file = static::create([
+      "id" => $fileId,
+      'relative_path' => $relativePath,
+      'merge_id' => $mergeId, // walau uuid bisa disi 0
+      'blob_hash' => $hash,
+      'workspace_id' => $workspaceId, // zero is nothing. Bisa saja untuk worksapce default
+      //'old_blob_hash', // nullable
+      // 'action' => 'upload', // walaupun fungsi ini dipakai di turunan, action tetap upload karena file asalnya adalah uploadan
+      'action' => 'added', // added karena file di upload. 
+      'size_bytes' => $size_bytes,
+      'file_modified_at' => $file_modified_at
+    ]);
+    return $file;
   }
 
   // Relasi

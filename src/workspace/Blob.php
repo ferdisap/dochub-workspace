@@ -51,6 +51,7 @@ class Blob
     // $hash_tree_sha256 = null;
     // $storage_path = null;
     $dhFiles = [];
+    $total_files = count($files);
     foreach ($files as $relativePath => $filePath) {
       // dd($relativePath, $filePath, file_exists($filePath));
       try {

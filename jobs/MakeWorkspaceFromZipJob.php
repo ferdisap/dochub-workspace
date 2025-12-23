@@ -160,19 +160,21 @@ class MakeWorkspaceFromZipJob extends FileUploadProcessJob implements ShouldQueu
       $this->updateStatus('completed', 100, $result);
 
       // #6. assign completed_at and status to dochub_merge_session
-      $mergeSessionModel = MergeSession::create([
+      MergeSession::create([
         'target_workspace_id' => $workspaceModel->id,
         'initiated_by_user_id' => $this->userId,
         'result_merge_id' => $mergeModel->id,
         'source_identifier' => "upload:" . basename($dhFile->relative_path), // include file extension
         'source_type' => 'upload',
         'started_at' => $now,
-        'status' => 'pending',
+        // 'status' => 'pending',
         // metadata null, berdasarkan db_structure ini bisa dipakai jika ada syncronizing dari third-party
+        'completed_at' => now(),
+        'status' => 'applied',
       ]);
-      $mergeSessionModel->completed_at = now();
-      $mergeSessionModel->status = 'applied';
-      $mergeSessionModel->save();
+      // $mergeSessionModel->completed_at = now();
+      // $mergeSessionModel->status = 'applied';
+      // $mergeSessionModel->save();
       return $result;
     } catch (\Exception $e) {
       if(isset($mergeModel)) $mergeModel->delete();
