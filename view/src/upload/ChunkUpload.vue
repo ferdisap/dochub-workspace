@@ -1,18 +1,18 @@
 <script setup lang="ts">
 	import { ref, onMounted, computed } from "vue";
 	import {
-		ChunkedUploadManager,
-		EndData,
-		ErrorData,
+		ChunkUploadManager,
+		EndUploadData,
+		ErrorUploadData,
 		formatBytes,
 		formatDuration,
-		ProcessedData,
-		ProgressData,
+		ProcessedUploadData,
+		ProgressUploadData,
 		UploadedData,
 	} from "./ChunkUploadManager";
 	import EncryptDecrypt from "../encryption/EncryptDecrypt.vue";
 	import TargetProgress from "./progress/TargetProgress.vue";
-	import InlineNotification from "../components/Notification/inlineNotification.vue";
+	import InlineNotification from "../components/Notification/InlineNotification.vue";
 
 	const environment = ref("detecting...");
 	const envClass = computed(() => {
@@ -33,7 +33,7 @@
 	});
 
 	const fileInput = ref<HTMLInputElement | null>(null);
-	const strategy = ref<string>("auto");
+	const strategy = ref<string | undefined>("auto");
 	const result = ref<null | {
 		type: "completed" | "failed" | "processing" | "uploaded";
 		title: string;
@@ -50,7 +50,7 @@
 
 	const speed = ref(0);
 	const status = ref<{ uploadId: string; status: string } | null>(null);
-	const uploadManager = new ChunkedUploadManager();
+	const uploadManager = new ChunkUploadManager();
 
   const visibleNotification = ref<boolean>(false);
 
@@ -72,14 +72,14 @@
 	});
 
 	onMounted(async () => {
-		uploadManager.onStart = handleStart;
-		uploadManager.onProgress = handleProgress;
+		uploadManager.onStartUpload = handleStart;
+		uploadManager.onUploading = handleProgress;
 		uploadManager.onUploaded = handleUploaded;
-		uploadManager.onProcessed = handleProcessing;
-		uploadManager.onEnd = handleCompleted;
-		uploadManager.onError = handleError;
+		uploadManager.onProcessedUpload = handleProcessing;
+		uploadManager.onEndUpload = handleCompleted;
+		uploadManager.onErrorUpload = handleError;
 
-		await uploadManager.initialize();
+		await uploadManager.initializeUpload();
 		strategy.value = uploadManager.config().driver;
 		maxSize.value = uploadManager.config().max_size;
 		environment.value = uploadManager.config().environment;
@@ -122,7 +122,7 @@
 		result.value = null;
 	};
 
-	const handleProgress = (data: ProgressData) => {
+	const handleProgress = (data: ProgressUploadData) => {
 		// Calculate percentage 1 berdasarkan total size
 		const percentage = (data.uploadedSize / data.totalBytes) * 100;
 		progress.value = Math.round(percentage);
@@ -152,7 +152,7 @@
 		// }
 	};
 
-	const handleCompleted = (data: EndData) => {
+	const handleCompleted = (data: EndUploadData) => {
 		uploading.value = false;
 		const duration = formatDuration(Date.now() - startTime.value!);
     showError(
@@ -173,7 +173,7 @@
 		};
 	};
 
-	const handleProcessing = (data: ProcessedData) => {
+	const handleProcessing = (data: ProcessedUploadData) => {
 		const duration = formatDuration(Date.now() - startTime.value!);
 		result.value = {
 			type: data.status,
@@ -183,8 +183,8 @@
 		};
 	};
 
-	const handleError = (data: ErrorData) => {
-		handleProgress(data as ProgressData);
+	const handleError = (data: ErrorUploadData) => {
+		handleProgress(data as ProgressUploadData);
 		handleCompleted({
 			fileName: data.fileName,
 			uploadId: data.uploadId,
@@ -192,7 +192,6 @@
 			totalBytes: data.totalBytes,
 			jobId: "0",
 			status: data.status,
-			url: "",
 		});
 		showError("Upload error", data.error.message);
 	};
@@ -237,7 +236,7 @@
 		const interval = setInterval(async () => {
 			if (uploading.value || isPaused.value) {
 				try {
-					const stt = await uploadManager.getStatus(uploadId);
+					const stt = await uploadManager.getStatusUpload(uploadId);
 					// console.log(stat);
 					status.value = { uploadId, status: stt.status };
 					if (stt.status === "completed" || stt.failed) {
@@ -274,7 +273,7 @@
 
 	const checkStatus = async () => {
 		if (status.value?.uploadId) {
-			const stt = await uploadManager.getStatus(status.value.uploadId);
+			const stt = await uploadManager.getStatusUpload(status.value.uploadId);
 			status.value = { uploadId: status.value?.uploadId, status: stt.status };
 		}
 	};

@@ -28,6 +28,7 @@ use Illuminate\Support\Facades\App;
 //      }
 //   ],
 // TAMBAHAN:
+// sepertinya history tidak dipakai
 // "histories": []
 // }
 

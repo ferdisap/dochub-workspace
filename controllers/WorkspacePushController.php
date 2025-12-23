@@ -69,9 +69,14 @@ class WorkspacePushController extends UploadNativeController
     $this->cache->set($id, json_encode($update));
   }
 
-  // $sourceManifest adalah existing workspace! (lama)
-  // $targetManifest adalah manifest milik client (baru)
-  // server menyimpan manifest target. 
+  /**
+   * $sourceManifest adalah existing workspace! (lama)
+   * $targetManifest adalah manifest milik client (baru)
+   * server menyimpan manifest target. 
+   * Yang diperlukan => 
+   * 1. $request->input('target_manifest')
+   * 2. $request->header('X-Source-Manifest-Hash')
+   */
   public function init(Request $request)
   {
     $targetManifest = $request->input('target_manifest');
@@ -87,6 +92,7 @@ class WorkspacePushController extends UploadNativeController
         $processedFiles[] = $file;
       }
     }
+    if (count($processedFiles) < 1) return response()->json(['error' => 'No need file to be processed'], 500); // server error, karena tidak ada file yang perlu di processed
 
     $sourceManifestHash = $request->header('X-Source-Manifest-Hash');
     $sourceManifestModel = Manifest::where('hash_tree_sha256', $sourceManifestHash)->where('from_id', $request->user()->id)->first();
@@ -107,6 +113,14 @@ class WorkspacePushController extends UploadNativeController
     ], 200);
   }
 
+  /**
+   * Yang diperlukan =>
+   * 1. $request->header('X-Target-Manifest-Hash');
+   * 2. $request->header('X-File-Hash');
+   * 3. $request->header('X-Upload-Id');
+   * 4. $request->header('X-Chunk-Id');
+   * 5. $request->header('X-File-Hash');
+   */
   public function checkChunk(Request $request)
   {
     // $sourceManifestHash = $request->header('X-Source-Manifest-Hash'); // hash_blob
@@ -114,35 +128,38 @@ class WorkspacePushController extends UploadNativeController
 
     $targetManifestHash = $request->header('X-Target-Manifest-Hash');
     $processedFiles = $this->get_source_file_processed($targetManifestHash);
-    if (count($processedFiles) < 1) abort(500); // server error, karena tidak ada file yang perlu di processed
 
     $hash = $request->header('X-File-Hash'); // hash_blob
-    if (!in_array($hash, $processedFiles, true)) abort(403); // forbidden
+    if (!in_array($hash, $processedFiles, true)) return response(null, 403); // forbidden
 
     $uploadId = $request->header('X-Upload-Id');
     $chunkId = $request->header('X-Chunk-Id');
-    $hash = $request->header('X-File-Hash'); // hash_blob
 
     if (Blob::where('hash', $hash)->count() > 0) {
-      return response(null, 422); // file tidak perlu di upload karena sudah ada di db
+      return response(null, 409); // conflicts means content file tidak perlu di upload karena sudah ada di db
     } else if ($this->isChunkHasUploaded($uploadId, $chunkId)) {
       return response(null, 304); // file chunk sudah terupload, misalnya di pause trus ulang lagi
     } else {
       return response(null, 404); // file chunk belum ada, continue upload
     }
   }
-
-  // sama seperti parent, uploadNativeController@uploadChunk
-  // public function uploadChunk(Request $request){}
-
-  // proses uploaded file menjadi blob dan nanti dibuatkan manifest, merge, merge_session, files, blobs baru
+  
+  /**
+   * proses uploaded file menjadi blob dan nanti dibuatkan manifest, merge, merge_session, files, blobs baru
+   * sama seperti parent, uploadNativeController@uploadChunk
+   * public function uploadChunk(Request $request){}
+   * Yang diperlukan => 
+   * 1. $request->input('upload_id')
+   * 3. $request->input('file_mtime')
+   * 4. $request->header('X-Source-Manifest-Hash')
+   * 5. $request->header('X-Target-Manifest-Hash')
+   */
   public function processUpload(Request $request)
   {
     // sama seperti di uploadNativeController@processUpload
     // validate input
     $request->validate([
       'upload_id' => 'required|string',
-      'file_name' => 'required|string',
       'file_mtime' => 'required|integer|before_or_equal:now', // diambil dari Math.floor(file.lastModified / 1000); di js
     ]);
     // $mtime = Carbon::createFromTimestamp($request->input('file_mtime'));
@@ -182,7 +199,6 @@ class WorkspacePushController extends UploadNativeController
     $data['job_id'] = 0;
     $data['status'] = 'processing';
 
-    // $filePath = $data['upload_dir'] . "/" . $data['file_name']; // sama seperti di FileUploadProcessJob.php
     $filesize = (int) $data["file_size"];
     // jika lebih dari 1 mb maka pakai worker
     if ($filesize > (1 * 1024 * 1024)) {
@@ -210,16 +226,22 @@ class WorkspacePushController extends UploadNativeController
     ]);
   }
 
-  // jika status processFile() sudah selesai / belum
-  // sama seperti parent @getUploadStatus, jika sudah maka lanjut upload file selanjutnya 
-  // public function statusFile(string $uploadId){}
-
-  // jika semua file sudah di process, baru di sini akan dibuatkan manifest/merge/file yang final dan update merge_session.
+  /**
+   * jika status processFile() sudah selesai / belum
+   * sama seperti parent @getUploadStatus, jika sudah maka lanjut upload file selanjutnya 
+   * public function statusFile(string $uploadId){}
+   * jika semua file sudah di process, baru di sini akan dibuatkan manifest/merge/file yang final dan update merge_session.
+   * Yang diperlukan =>
+   * 1. $request->header('X-Source-Manifest-Hash');
+   * 2. $request->header('X-Target-Manifest-Hash');
+   * 3. $request->input('label');
+   * 4. $request->input('tags'); // string
+   */
   public function processPush(Request $request)
   {
     $sourceManifestHash = $request->header('X-Source-Manifest-Hash');
     $targetManifestHash = $request->header('X-Target-Manifest-Hash');
-    $label = $request->input('label');
+    $label = $request->input('label'); // not required
     $tags = $request->input('tags'); // string
     $userId = $request->user()->id;
     $pushId = $this->get_id($targetManifestHash, $sourceManifestHash);
@@ -305,14 +327,13 @@ class WorkspacePushController extends UploadNativeController
     ]);
   }
 
-  // karena processPush mungkin memakan waktu besar (karena pakai job), jadi cek job status nya di sini
-  // cara kerja mirip seperti parent@getUploadStatus
-  public function statusPush(Request $request)
+  /**
+   * karena processPush mungkin memakan waktu besar (karena pakai job), jadi cek job status nya di sini
+   * cara kerja mirip seperti parent@getUploadStatus
+   * Yang diperlukan =>
+   */
+  public function statusPush(Request $request, string $pushId)
   {
-    $sourceManifestHash = $request->header('X-Source-Manifest-Hash');
-    $targetManifestHash = $request->header('X-Target-Manifest-Hash');
-    $pushId = $this->get_id($targetManifestHash, $sourceManifestHash);
-
     $data = $this->cache->getArray($pushId);
 
     if (count($data) < 1) {
@@ -332,9 +353,9 @@ class WorkspacePushController extends UploadNativeController
     }
 
     return response()->json([
-      'push_id' => $pushId,
       'status' => $data['status'] ?? 'processing',
       'job_id' => $data['job_id'] ?? null,
+      'message' => 'Push still in processing'
     ]);
   }
 }

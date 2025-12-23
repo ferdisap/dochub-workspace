@@ -41,6 +41,11 @@ class UploadNativeController extends UploadController
     return config("upload.driver.{$driverUpload}.root") . "/{$userId}/{$uploadId}";
   }
 
+  /**
+   * Yang diperlukan =>
+   * 1. $request->header('X-Upload-Id')
+   * 2. $request->header('X-Chunk-Id')
+   */
   public function checkChunk(Request $request)
   {
     $uploadId = $request->header('X-Upload-Id');
@@ -56,6 +61,15 @@ class UploadNativeController extends UploadController
   /**
    * POST /upload/chunk
    * Terima chunk dengan streaming I/O (low memory)
+   * 
+   * Yang diperlukan =>
+   * 1. $request->header('X-Upload-Id')
+   * 2. $request->header('X-Chunk-Id')
+   * 3. $request->header('X-Chunk-Index')
+   * 4. $request->header('X-Chunk-Size');   
+   * 5. $request->header('X-Total-Chunks')
+   * 6. $request->header('X-File-Name')
+   * 7. $request->header('X-File-Size')
    */
   public function uploadChunk(Request $request)
   {
@@ -140,7 +154,7 @@ class UploadNativeController extends UploadController
 
     $request->validate([
       'upload_id' => 'required|string',
-      'file_name' => 'required|string',
+      // 'file_name' => 'required|string',
       'file_mtime' => 'required|integer|before_or_equal:now', // diambil dari Math.floor(file.lastModified / 1000); di js
     ]);
     // $mtime = Carbon::createFromTimestamp($request->input('file_mtime'));
@@ -213,7 +227,7 @@ class UploadNativeController extends UploadController
    * 
    * 🔑 Tambahkan auto-cleanup jika sudah selesai
    */
-  public function getUploadStatus(string $id)
+  public function statusUpload(string $id)
   {
     // Coba Redis dulu (prioritas tinggi)
     // $cacheDriver = 'redis';

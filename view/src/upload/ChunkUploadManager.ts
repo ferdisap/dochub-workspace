@@ -1,10 +1,11 @@
-import { route_upload_check_chunk, route_upload_get_config, route_upload_per_chunk, route_upload_process_chunk, route_upload_status_process } from "../helpers/listRoute";
+import { hashFile, hashFileFull } from "../encryption/ferdi-encryption";
+import { route_upload_check_chunk, route_upload_get_config, route_upload_per_chunk, route_upload_chunk_process, route_upload_status_process } from "../helpers/listRoute";
 import { getCSRFToken } from "../helpers/toDom";
 
 const isDev = false; // tidak check chunk jika isDev = true
 
 interface UploadConfig {
-  driver: string;
+  driver: string | undefined;
   environment: string;
   max_size: number;
   chunk_size: number;
@@ -26,14 +27,14 @@ interface ChunkMetadata {
 // processing, completed, failed => di process zip job
 export type UploadStatus = "uploaded" | "processing" | "failed" | "completed";
 
-export interface StartData {
+export interface StartUploadData {
   uploadId: string;
   fileName: string;
   totalBytes: number; // total bytes
   totalChunks: number;
 }
 
-export interface ProgressData extends StartData {
+export interface ProgressUploadData extends StartUploadData {
   chunkId: string;
   chunkIndex: number;
   chunkSize: number; // bytes
@@ -41,23 +42,22 @@ export interface ProgressData extends StartData {
   status: UploadStatus; // eg: uploaded
 }
 
-export interface UploadedData extends StartData {
+export interface UploadedData extends StartUploadData {
   status: UploadStatus; // eg: uploaded
 }
 
-export interface ProcessedData extends StartData {
+export interface ProcessedUploadData extends StartUploadData {
   jobId: string,
   status: UploadStatus;
   url?: string | null;
 }
 
-export interface EndData extends StartData {
+export interface EndUploadData extends StartUploadData {
   jobId: string;
   status: UploadStatus; // eg: uploaded
-  url: string;
 }
 
-export interface ErrorData extends StartData {
+export interface ErrorUploadData extends StartUploadData {
   chunkId?: string;
   chunkIndex?: number;
   chunkSize?: number; // bytes
@@ -66,79 +66,79 @@ export interface ErrorData extends StartData {
   error: Error;
 }
 
-async function sha256(buffer: ArrayBuffer | Uint8Array<ArrayBuffer>) {
-  const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
+// async function sha256(buffer: ArrayBuffer | Uint8Array<ArrayBuffer>) {
+//   const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+//   return Array.from(new Uint8Array(hashBuffer))
+//     .map((b) => b.toString(16).padStart(2, "0"))
+//     .join("");
+// }
 
-export async function hashString(message: string) {
-  const msgBuffer = new TextEncoder().encode(message);
-  return sha256(msgBuffer);
-}
-export async function hashBuffer(
-  buffer: ArrayBuffer | Uint8Array<ArrayBuffer>
-) {
-  return sha256(buffer);
-}
-export async function hashFile(file: File) {
-  const buffer = await file.arrayBuffer();
-  return sha256(buffer);
-}
+// export async function hashString(message: string) {
+//   const msgBuffer = new TextEncoder().encode(message);
+//   return sha256(msgBuffer);
+// }
+// export async function hashBuffer(
+//   buffer: ArrayBuffer | Uint8Array<ArrayBuffer>
+// ) {
+//   return sha256(buffer);
+// }
+// export async function hashFile(file: File) {
+//   const buffer = await file.arrayBuffer();
+//   return sha256(buffer);
+// }
 // const file = upload.files[0]
 // const slice = file.slice(0,100);
 // const strHashed = hashString(slice);
 // const buffer = await slice.arrayBuffer();
 // const bufferHashed = hashBuffer(buffer);
-async function hashFileTreshold(file: File, thresholdMB = 1) {
-  const threshold = thresholdMB * 1024 * 1024; // 1 MB
+// async function hashFileTreshold(file: File, thresholdMB = 1) {
+//   const threshold = thresholdMB * 1024 * 1024; // 1 MB
 
-  // Jika file kecil → hash full
-  if (file.size <= threshold * 2) {
-    // jika kurang dari 2mb
-    const buffer = await file.arrayBuffer();
-    return sha256(buffer);
-  }
+//   // Jika file kecil → hash full
+//   if (file.size <= threshold * 2) {
+//     // jika kurang dari 2mb
+//     const buffer = await file.arrayBuffer();
+//     return sha256(buffer);
+//   }
 
-  // Jika besar → hash 1MB awal + 1MB akhir
-  const firstSlice = file.slice(0, threshold);
-  const lastSlice = file.slice(file.size - threshold, file.size);
+//   // Jika besar → hash 1MB awal + 1MB akhir
+//   const firstSlice = file.slice(0, threshold);
+//   const lastSlice = file.slice(file.size - threshold, file.size);
 
-  const firstBuffer = await firstSlice.arrayBuffer();
-  const lastBuffer = await lastSlice.arrayBuffer();
+//   const firstBuffer = await firstSlice.arrayBuffer();
+//   const lastBuffer = await lastSlice.arrayBuffer();
 
-  // Gabungkan 2 buffer menjadi 1
-  const joined = new Uint8Array(
-    firstBuffer.byteLength + lastBuffer.byteLength
-  );
-  joined.set(new Uint8Array(firstBuffer), 0);
-  joined.set(new Uint8Array(lastBuffer), firstBuffer.byteLength);
+//   // Gabungkan 2 buffer menjadi 1
+//   const joined = new Uint8Array(
+//     firstBuffer.byteLength + lastBuffer.byteLength
+//   );
+//   joined.set(new Uint8Array(firstBuffer), 0);
+//   joined.set(new Uint8Array(lastBuffer), firstBuffer.byteLength);
 
-  return sha256(joined);
-}
+//   return sha256(joined);
+// }
 // const file = upload.files[0];
 // const hash = await hashFileSmart(file);
 // console.log(hash);
 
-let waitResolve: () => void = () => { };
-let waitReject: () => void = () => { };
-let waitPromise = Promise.resolve(true);
+// let waitResolve: () => void = () => { };
+// let waitReject: () => void = () => { };
+// let waitPromise = Promise.resolve(true);
 
-async function wait() {
-  try {
-    await waitPromise;
-    return true;
-  } catch (error) {
-    throw new Error("Upload cancelled");
-  }
-}
-async function makeWait() {
-  waitPromise = new Promise((res, rej) => {
-    waitResolve = async () => res(true);
-    waitReject = async () => rej(true);
-  });
-}
+// async function wait() {
+//   try {
+//     await waitPromise;
+//     return true;
+//   } catch (error) {
+//     throw new Error("Upload cancelled");
+//   }
+// }
+// async function makeWait() {
+//   waitPromise = new Promise((res, rej) => {
+//     waitResolve = async () => res(true);
+//     waitReject = async () => rej(true);
+//   });
+// }
 
 export class WaitController {
   private resolveFn: (() => void) | null = null;
@@ -214,58 +214,57 @@ export class WaitController {
   }
 }
 
-export class ChunkedUploadManager {
-  private _config: UploadConfig;
-  // private endpoint: string;
-  private uploadId: string | null = null;
-  private abortController: AbortController | null = null;
-  private metadata: ChunkMetadata | null = null;
+export class ChunkUploadManager {
+  private _configUpload: UploadConfig;
+  protected _uploadId: string | null = null;
+  protected _abortController: AbortController | null = null;
+  protected _metadata: ChunkMetadata | null = null;
+  protected _waitController: WaitController;
+  protected _fileHash:string | null = null;
 
-  private waitController: WaitController;
-
-  // constructor(endpoint: string = "/dochub/upload") {
   constructor() {
-    this._config = {
-      driver: "native",
+    this._configUpload = {
+      driver: undefined,
       environment: "development",
       max_size: 5 * 1024 * 1024 * 1024, // 5 GB
       chunk_size: 1 * 1024 * 1024, // 1 MB
       expiration: 604800,
     };
-    this.waitController = new WaitController;
+    this._waitController = new WaitController;
   }
 
   /**
    * Inisialisasi dengan konfigurasi dari server
    */
-  async initialize(): Promise<UploadConfig> {
-    this.uploadId = null;
-    // makeWait();
+  async initializeUpload(): Promise<void> {
+    this._uploadId = null;
+    this._fileHash = null;
     try {
+      if(this._configUpload.driver) return;
       const response = await fetch(route_upload_get_config());
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const config = await response.json();
-      this._config = {
-        ...this._config,
+      this._configUpload = {
+        ...this._configUpload,
         ...config,
-        driver: config.driver || this._config.driver,
-        chunk_size: config.chunk_size || this._config.chunk_size,
-        max_size: config.max_size || this._config.max_size,
+        driver: config.driver || this._configUpload.driver,
+        chunk_size: config.chunk_size || this._configUpload.chunk_size,
+        max_size: config.max_size || this._configUpload.max_size,
       };
 
-      return this._config;
+      // return this._configUpload;
     } catch (error) {
       console.warn(
         "Failed to fetch upload config, using defaults:",
         error
       );
-      return this._config;
+      // return this._configUpload;
     }
   }
 
   config() {
-    return this._config;
+    return this._configUpload;
   }
 
   /**
@@ -273,17 +272,19 @@ export class ChunkedUploadManager {
    */
   async upload(file: File): Promise<string> {
     // Validasi
-    if (file.size > this._config.max_size) {
+    if (file.size > this._configUpload.max_size) {
       throw new Error(
-        `File too large. Max: ${formatBytes(this._config.max_size)}`
+        `File too large. Max: ${formatBytes(this._configUpload.max_size)}`
       );
     }
 
+    if(!this._configUpload.driver) await this.initializeUpload();
+
     // Generate upload ID
-    // this.uploadId = `native_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const hashname = await hashFileTreshold(file);
-    this.uploadId = `native_${hashname}`;
-    // this.uploadId = hashname;
+    // this._uploadId = `native_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    this._fileHash = await hashFile(file);
+    this._uploadId = `native_${this._fileHash}`;
+    // this._uploadId = hashname;
     // console.log(hashname);
 
     // const rcode = await this.checkUpload();
@@ -296,11 +297,11 @@ export class ChunkedUploadManager {
     // }
 
     // Hitung chunk
-    const chunkSize = this._config.chunk_size;
+    const chunkSize = this._configUpload.chunk_size;
     const totalChunks = Math.ceil(file.size / chunkSize);
 
-    this.metadata = {
-      uploadId: this.uploadId,
+    this._metadata = {
+      uploadId: this._uploadId,
       fileName: file.name,
       fileSize: file.size,
       fileMtime: Math.floor(file.lastModified / 1000),
@@ -311,22 +312,22 @@ export class ChunkedUploadManager {
     };
 
     const startData = {
-      uploadId: this.uploadId,
+      uploadId: this._uploadId,
       fileName: file.name,
       totalBytes: file.size,
       totalChunks: totalChunks,
     };
-    if (this.onStart) {
-      this.onStart(startData);
+    if (this.onStartUpload) {
+      this.onStartUpload(startData);
     }
 
-    this.abortController = new AbortController();
+    this._abortController = new AbortController();
 
     let uploadedSize = 0;
     // Upload chunk per chunk
     for (let i = 0; i < totalChunks; i++) {
       // try {
-      //   await this.waitController.wait();
+      //   await this._waitController.wait();
       // } catch (error) {
       //   console.log("cancel await on looping");
       //   throw error;
@@ -335,14 +336,14 @@ export class ChunkedUploadManager {
       let size: number;
       let status: UploadStatus;
       try {
-        await this.waitController.wait();
+        await this._waitController.wait();
         ({ id, size, status } = await this.uploadChunk(
           file,
           i,
           totalChunks
         ));
         uploadedSize += size;
-        if (this.onProgress) {
+        if (this.onUploading) {
           const progressData = {
             // start data
             ...startData,
@@ -353,17 +354,17 @@ export class ChunkedUploadManager {
             uploadedSize: uploadedSize,
             status: status,
           };
-          this.onProgress(progressData);
+          this.onUploading(progressData);
         }
       } catch (e) {
-        if (this.onError) {
-          this.onError({
+        if (this.onErrorUpload) {
+          this.onErrorUpload({
             // start data
             ...startData,
             // progress data
             chunkSize: size!,
             totalBytes: file.size,
-            uploadId: this.uploadId,
+            uploadId: this._uploadId,
             uploadedSize: uploadedSize,
             status: "failed",
             error: e as Error,
@@ -376,26 +377,25 @@ export class ChunkedUploadManager {
     if (this.onUploaded) {
       this.onUploaded({ ...startData, status: "uploaded" });
     }
-    await this.waitController.wait();
+    await this._waitController.wait();
     // Trigger processing
     let jobId: string;
-    let url: string;
     let status: UploadStatus;
     try {
-      ({ jobId, url, status } = await this.triggerProcessing());
-      if (status === 'processing' && this.onProcessed) {
-        this.onProcessed({ ...startData, status, jobId, url });
+      ({ jobId, status } = await this.processUpload());
+      if (status === 'processing' && this.onProcessedUpload) {
+        this.onProcessedUpload({ ...startData, status, jobId });
       }
-      else if (status === 'completed' && this.onEnd) {
-        this.onEnd({ ...startData, jobId, status, url });
+      else if (status === 'completed' && this.onEndUpload) {
+        this.onEndUpload({ ...startData, jobId, status });
       }
     } catch (e) {
 
-      if (this.onError) {
-        this.onError({
+      if (this.onErrorUpload) {
+        this.onErrorUpload({
           ...startData,
           totalBytes: file.size,
-          uploadId: this.uploadId,
+          uploadId: this._uploadId,
           uploadedSize: uploadedSize,
           status: "failed",
           error: e as Error,
@@ -403,8 +403,9 @@ export class ChunkedUploadManager {
       }
     }
 
-    const uploadId = this.uploadId;
-    this.initialize();
+    const uploadId = this._uploadId;
+    this._uploadId = null;
+    this._fileHash = null;
     return uploadId;
   }
 
@@ -419,7 +420,7 @@ export class ChunkedUploadManager {
   //   const opt = {
   //     method: "POST",
   //     headers: {
-  //       "X-Upload-ID": this.uploadId!,
+  //       "X-Upload-ID": this._uploadId!,
   //       "X-CSRF-TOKEN": getCSRFToken(),
   //     },
   //   };
@@ -439,17 +440,17 @@ export class ChunkedUploadManager {
    * @returns status code 304 = sudah ada chunk
    * @returns status code 404 = lanjut upload chunk
    */
-  private async checkChunk(chunkId: string): Promise<number> {
+  public async checkChunk(chunkId: string): Promise<number> {
     // periksa di localStorage dulu sehingga tidak perlu fetch ke server
     const opt = {
       method: "POST",
       headers: {
         "X-Requested-With": "XMLHttpRequest",
-        "X-Upload-ID": this.uploadId!,
+        "X-Upload-ID": this._uploadId!,
         "X-Chunk-ID": chunkId,
         "X-CSRF-TOKEN": getCSRFToken(),
       },
-      signal: this.abortController ? this.abortController.signal : null,
+      signal: this._abortController ? this._abortController.signal : null,
     };
     let response: Response;
     try {
@@ -470,16 +471,17 @@ export class ChunkedUploadManager {
     totalChunks: number
   ): Promise<{ id: string; size: number; status: UploadStatus }> {
 
-    const start = chunkIndex * this.metadata!.chunkSize;
+    const start = chunkIndex * this._metadata!.chunkSize;
     const end = Math.min(
-      start + this.metadata!.chunkSize,
-      this.metadata!.fileSize
+      start + this._metadata!.chunkSize,
+      this._metadata!.fileSize
     );
 
     // 🔑 Baca chunk sebagai Blob
     const chunk = file.slice(start, end);
     const chunkSize = chunk.size;
-    const chunkId = await hashBuffer(await chunk.arrayBuffer());
+    // const chunkId = await hashBuffer(await chunk.arrayBuffer());
+    const chunkId = await hashFileFull(await chunk.arrayBuffer());
 
     let response: Response;
     try {
@@ -493,7 +495,6 @@ export class ChunkedUploadManager {
             return { id: chunkId, size: chunkSize, status: "uploaded" };
           }
         } catch (error) {
-          // console.error(error);
           throw error;
         }
       }
@@ -503,18 +504,18 @@ export class ChunkedUploadManager {
         method: "POST",
         headers: {
           "X-Requested-With": "XMLHttpRequest",
-          "X-Upload-ID": this.uploadId!,
+          "X-Upload-ID": this._uploadId!,
           "X-Chunk-ID": chunkId!,
           "X-Chunk-Index": chunkIndex.toString(),
           "X-Chunk-Size": String(chunkSize),
           "X-Total-Chunks": totalChunks.toString(),
-          "X-File-Name": this.metadata!.fileName,
-          "X-File-Size": this.metadata!.fileSize.toString(),
+          "X-File-Name": this._metadata!.fileName,
+          "X-File-Size": this._metadata!.fileSize.toString(),
           "Content-Type": "application/octet-stream",
           "X-CSRF-TOKEN": getCSRFToken(),
         },
         body: chunk, // 🔑 Langsung kirim Blob
-        signal: this.abortController ? this.abortController.signal : null,
+        signal: this._abortController ? this._abortController.signal : null,
       });
       // tulis di localStorage sehingga ketika checkChunk tidak perlu fetch ke internet
 
@@ -557,14 +558,14 @@ export class ChunkedUploadManager {
   /**
    * Trigger pemrosesan setelah semua chunk selesai
    */
-  private async triggerProcessing(): Promise<{
+  public async processUpload(): Promise<{
     jobId: string;
-    url: string;
+    // url: string;
     status: UploadStatus;
   }> {
-    if (!this.uploadId) throw new Error("No upload ID");
+    if (!this._uploadId) throw new Error("No upload ID");
 
-    const response = await fetch(route_upload_process_chunk(), {
+    const response = await fetch(route_upload_chunk_process(), {
       method: "POST",
       headers: {
         "X-Requested-With": "XMLHttpRequest",
@@ -572,10 +573,11 @@ export class ChunkedUploadManager {
         "X-CSRF-TOKEN": getCSRFToken(),
       },
       body: JSON.stringify({
-        upload_id: this.uploadId,
-        file_name: this.metadata!.fileName,
-        file_mtime: this.metadata!.fileMtime,
+        upload_id: this._uploadId,
+        // file_name: this._metadata!.fileName,
+        file_mtime: this._metadata!.fileMtime,
       }),
+      signal: this._abortController ? this._abortController.signal : null,
     });
 
     if (!response.ok) {
@@ -586,7 +588,7 @@ export class ChunkedUploadManager {
 
     return {
       jobId: result.job_id,
-      url: result.url,
+      // url: result.url,
       status: result.status || "completed",
     };
   }
@@ -598,44 +600,45 @@ export class ChunkedUploadManager {
   /**
    * Cek status upload
    */
-  async getStatus(uploadId: string): Promise<any> {
+  async getStatusUpload(uploadId: string): Promise<any> {
     const response = await fetch(route_upload_status_process(uploadId), {
       headers: {
         "X-Requested-With": "XMLHttpRequest",
-      }
+      },
+      signal: this._abortController ? this._abortController.signal : null,
     });
     if (!response.ok) {
       throw new Error(`Status check failed: ${response.status}`);
     }
 
     const data = await response.json() as Record<string, any>;
-    if (data.status === 'completed' && this.onEnd) {
+    if (data.status === 'completed' && this.onEndUpload) {
       const startData = {
         uploadId,
         fileName: data.file_name,
         totalBytes: data.file_size,
         totalChunks: data.total_chunks,
       };
-      this.onEnd({...startData, jobId: data.job_id, url: data.url, status: data.status});
+      this.onEndUpload({...startData, jobId: data.job_id, status: data.status});
     }
     return data;
   }
 
   // Callbacks
-  onStart?: (data: StartData) => void;
-  onProgress?: (data: ProgressData) => void;
+  onStartUpload?: (data: StartUploadData) => void;
+  onUploading?: (data: ProgressUploadData) => void;
   onUploaded?: (data: UploadedData) => void;
-  onProcessed?: (data: ProcessedData) => void;
-  onEnd?: (data: EndData) => void;
-  onError?: (data: ErrorData) => void;
+  onProcessedUpload?: (data: ProcessedUploadData) => void;
+  onEndUpload?: (data: EndUploadData) => void;
+  onErrorUpload?: (data: ErrorUploadData) => void;
 
   pause() {
-    this.waitController.pause();
+    this._waitController.pause();
     // makeWait();
   }
 
   resume() {
-    this.waitController.resume();
+    this._waitController.resume();
     // waitResolve();
   }
 
@@ -647,14 +650,14 @@ export class ChunkedUploadManager {
     // waitReject(); // agar wait yang lama telah reject, tidak menggantung
     // makeWait(); // dibuat lagi agar merefresh sehingga saat ada await wait(), mengacu ke promise yang sama
     // waitReject();
-    this.waitController.cancel();
-    if (this.abortController) {
-      this.abortController.abort();
-      this.abortController = null;
+    this._waitController.cancel();
+    if (this._abortController) {
+      this._abortController.abort();
+      this._abortController = null;
     }
-    this.initialize();
-    setTimeout(() => this.waitController.reset(), 1000); // timeout agar saat looping promise masih dalam keaadaan reject. di beri 1 detik agar aman
-    // this.waitController.reset();
+    this.initializeUpload();
+    setTimeout(() => this._waitController.reset(), 1000); // timeout agar saat looping promise masih dalam keaadaan reject. di beri 1 detik agar aman
+    // this._waitController.reset();
     console.log("Upload cancelled");
   }
 }

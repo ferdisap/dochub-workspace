@@ -112,15 +112,14 @@ async function stringTo16Bytes(str: string) {
  * - Selain itu → hash threshold
  * @returns string
  */
-export async function hashFile(file: File) :Promise<string>{
-  const thresholdMB = 1;
+export async function hashFile(file: File, thresholdMB = 1) :Promise<string>{
   const threshold = thresholdMB * 1024 * 1024; // 1 MB
 
   // jika binary dan sizenya kurang dari limit (2x threshold) maka hash full
-  if (file.size <= threshold * 2) {
-    return hashFileFull(file);
-  } else {
+  if (file.size > (threshold * 2)) {
     return hashFileThreshold(file, thresholdMB);
+  } else {
+    return hashFileFull(file);
   }
 }
 
@@ -130,8 +129,13 @@ export async function hashFile(file: File) :Promise<string>{
  * @param file File object (browser File API)
  * @returns Hex string SHA-256 (64 lowercase chars)
  */
-export async function hashFileFull(file: File) :Promise<string>{
-  const buffer = await file.arrayBuffer();
+export async function hashFileFull(file: File | ArrayBuffer | Uint8Array<ArrayBuffer> ) :Promise<string>{
+  let buffer :ArrayBuffer | Uint8Array<ArrayBuffer>;
+  if((file as File).size){
+    buffer = await (file as File).arrayBuffer();
+  } else {
+    buffer = (file as ArrayBuffer);
+  }
   const hash = sha256(ensureUint8Array(buffer)); // ✅ noble terima ArrayBuffer juga
   return bytesToHex(hash);
 }

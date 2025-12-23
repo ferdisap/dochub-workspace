@@ -17,17 +17,15 @@ Route::prefix('dochub')->middleware([
   Route::post('/upload/list', [UploadController::class, 'list'])->middleware('auth');
   // config before upload, check and put chunk, process
   Route::get('/upload/config', [UploadController::class, 'getConfig'])->middleware('auth')->name('dochub.upload.config');
-  Route::post('/upload/chunk/check', [UploadNativeController::class, 'checkChunk'])->middleware('auth')->name('dochub.upload.check');
-  Route::post('/upload/chunk', [UploadNativeController::class, 'uploadChunk'])->middleware('auth')->name('dochub.upload.chunk.check');
-  Route::post('/upload/process', [UploadNativeController::class, 'processUpload'])->middleware('auth')->name('dochub.upload.process');
+  Route::post('/upload/chunk/check', [UploadNativeController::class, 'checkChunk'])->middleware('auth')->name('dochub.upload.chunk.check');
+  Route::post('/upload/chunk', [UploadNativeController::class, 'uploadChunk'])->middleware('auth')->name('dochub.upload.chunk');
+  Route::post('/upload/chunk/process', [UploadNativeController::class, 'processUpload'])->middleware('auth')->name('dochub.upload.process');
   // polling status chunk and delete
-  Route::get('/upload/{id}/status', [UploadNativeController::class, 'getUploadStatus'])->middleware('auth')->name('dochub.upload.status');
-  Route::delete('/upload/{id}/delete', [UploadNativeController::class, 'deleteUpload'])->middleware('auth')->name('dochub.upload.delete');
+  Route::get('/upload/status/{id}', [UploadNativeController::class, 'statusUpload'])->middleware('auth')->name('dochub.upload.status');
+  // Route::delete('/upload/{id}/delete', [UploadNativeController::class, 'deleteUpload'])->middleware('auth')->name('dochub.upload.delete'); // dipindah ke file
   // cast to workspace
   Route::post('/upload/make/workspace/{manifest:hash_tree_sha256}', [UploadController::class, 'makeWorkspace'])->middleware('auth')->name('dochub.upload.make.workspace');
   Route::get('/upload/make/workspace/status/{processId}', [UploadController::class, 'getMakeWorkspaceStatus'])->middleware('auth')->name('dochub.upload.make.workspace');
-  // delete uploaded file
-  Route::post('/file/delete/{manifest:hash_tree_sha256}/{blob:hash}', [UploadController::class, 'deleteFile'])->middleware('auth')->withoutScopedBindings()->name('dochub.file.delete'); // harus dipasang withoutScopedBindings() karena ada dua model tanpa saling berhubungan langsung
   // Route::get('/tes/chunk/{uploadId}/{chunkId}', [UploadNativeController::class, 'tesCheckChunk']);
 
   // Route::get("/tes", [UploadNativeController::class, 'tesJob']);
@@ -47,7 +45,7 @@ Route::prefix('dochub')->middleware([
 // Route::patch('/{id}', [UploadController::class, 'patchUpload']);
 
 // // 🔑 Native routes baru
-// Route::get('/{id}/status', [UploadController::class, 'getUploadStatus']); // GET /upload/abc123/status
+// Route::get('/{id}/status', [UploadController::class, 'statusUpload']); // GET /upload/abc123/status
 // Route::delete('/{id}', [UploadController::class, 'deleteUpload']);        // DELETE /upload/abc123
 
 // use App\Http\Controllers\Api\UploadController;

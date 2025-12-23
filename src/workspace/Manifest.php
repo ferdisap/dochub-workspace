@@ -29,6 +29,7 @@ use Dochub\Workspace\Workspace;
 //   // setiap file di prop["files"] tidak ada di history
 //   // ada kemungkinan setiap active file akan di rollback ke history sebelumnya (sesuai index history). 
 //   // jika synronizing maka ada kemungkinan "$id" berbeda jika pakai id number/incremented. Jadi solusinya pakai uuid
+//   // sepertinya history tidak dipakai
 //   "histories": {
 //     "$id": [
 //       {

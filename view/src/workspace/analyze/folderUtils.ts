@@ -1,5 +1,5 @@
 import { WorkerAnalyzePayload, WorkerAnalyzeResult, WorkerMakeFileNodePayload, WorkerMakeFileNodeResult } from "view/src/worker/analyze.worker";
-import { DhFileParam, DhFolderParam } from "../core/DhFile";
+import { DhFile, DhFileParam, DhFolderParam } from "../core/DhFile";
 import AnalyzeWorker from './../../worker/analyze.worker.ts?worker';
 
 // Interface tetap sama
@@ -58,6 +58,16 @@ export function countFiles(node: FileNode): number {
 //   }
 //   return nodes;
 // }
+
+export async function loopFolder(node: FileNode, onFoundFile: (node:FileNode) => Promise<undefined>){
+  if(node.kind === "directory" && node.children){
+    for(const child of node.children){
+      await loopFolder(child, onFoundFile);
+    }
+  } else {
+    await onFoundFile(node);
+  }
+}
 
 export async function scanDirectory(
   dirHandle: DhFolderParam,

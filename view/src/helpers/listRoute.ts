@@ -3,7 +3,7 @@
  * ENCRYPTION ROUTE
  * ----------------
  */
-export function route_encryption_search_user(query: string|null = null) {
+export function route_encryption_search_user(query: string | null = null) {
   return `/dochub/encryption/get/users` + (query ? `?q_mail=${query}` : ''); // GET
 }
 export function route_encryption_get_user() {
@@ -24,7 +24,7 @@ export function route_encryption_upload_process() {
 export function route_encryption_register_publicKey() {
   return '/dochub/encryption/register/public-key';
 }
-export function route_encryption_get_publicKey(email:string | null){
+export function route_encryption_get_publicKey(email: string | null) {
   return '/dochub/encryption/get/public-key' + (email ? `?q_mail=${email}` : ''); // GET
 }
 
@@ -33,28 +33,28 @@ export function route_encryption_get_publicKey(email:string | null){
  * UPLOAD ROUTE
  * -------------
  */
-export function route_upload_get_config(){
+export function route_upload_get_config() {
   return '/dochub/upload/config'; // GET
 }
-export function route_upload_check_chunk(){
-  return '/dochub/upload/chunk/check'; // GET
+export function route_upload_check_chunk() {
+  return '/dochub/upload/chunk/check'; // POST
 }
-export function route_upload_per_chunk(){
+export function route_upload_per_chunk() {
   return '/dochub/upload/chunk'; // POST
 }
-export function route_upload_process_chunk(){
-  return '/dochub/upload/process'; // POST
+export function route_upload_chunk_process() {
+  return '/dochub/upload/chunk/process'; // POST
 }
-export function route_upload_status_process(uploadId: string){
-  return `/dochub/upload/${uploadId}/status`; // GET
+export function route_upload_status_process(uploadId: string) {
+  return `/dochub/upload/status/${uploadId}`; // GET
 }
-export function route_upload_get_list(){
+export function route_upload_get_list() {
   return '/dochub/upload/list'; // POST
 }
-export function route_upload_make_workspace(manifestId:string){
+export function route_upload_make_workspace(manifestId: string) {
   return `/dochub/upload/make/workspace/${manifestId}`; // POST
 }
-export function route_upload_make_workspace_status(manifestId:string){
+export function route_upload_make_workspace_status(manifestId: string) {
   return `/dochub/upload/make/workspace/status/${manifestId}`; // GET
 }
 
@@ -63,10 +63,10 @@ export function route_upload_make_workspace_status(manifestId:string){
  * FILE ROUTE
  * -----------
  */
-export function route_file_download(hash:string){
+export function route_file_download(hash: string) {
   return `/dochub/file/download/${hash}`; // GET
 }
-export function route_file_delete(hash:string, manifestId:string){
+export function route_file_delete(hash: string, manifestId: string) {
   // return `/dochub/file/delete/${hash}/${manifestId}`; // POST
   return `/dochub/file/delete/${manifestId}/${hash}`; // POST
 }
@@ -76,6 +76,31 @@ export function route_file_delete(hash:string, manifestId:string){
  * MANIFEST ROUTE
  * -----------
  */
-export function route_manifest_search(query:string){
+export function route_manifest_search(query: string) {
   return `/dochub/manifest/search?query=${query}`; // GET
 }
+
+/**
+ * ---------------
+ * WORKSPACE ROUTE
+ * ---------------
+ */
+
+export function route_workspace_push_init() {
+  return `/dochub/workspace/push/init`; // POST
+}
+export function route_workspace_check_chunk() {
+  return '/dochub/workspace/chunk/check'; // POST
+}
+// // route sama seperti di upload.php, yaitu Route::post('/upload/chunk', [UploadNativeController::class, 'uploadChunk'])->middleware('auth')->name('dochub.upload.chunk');
+export function route_workspace_upload_chunk() {
+  return '/dochub/workspace/chunk/process'; // POST
+}
+// // route sama seperti di upload.php, yaitu Route::get('/upload/{id}/status', [UploadNativeController::class, 'statusUpload'])->middleware('auth')->name('dochub.upload.status');
+export function route_workspace_push_process() {
+  return '/dochub/workspace/push/process'; // POST
+}
+export function route_workspace_push_status(pushId:string) {
+  return `/dochub/workspace/push/process/${pushId}`; // GET
+}
+// Route::get('/workspace/push/{id}/status', [WorkspacePushController::class, 'statusPush'])->middleware('auth')->name('dochub.upload.status');  

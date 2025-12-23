@@ -363,28 +363,28 @@ export interface HistoryObject extends FileObject {}
  * DhHistory
  * ---------
  */
-export class DhHistory {
+// export class DhHistory {
 
-  protected dhFile: DhFile;
+//   protected dhFile: DhFile;
 
-  constructor(dhFile: DhFile) {
-    this.dhFile = dhFile;
-  }
+//   constructor(dhFile: DhFile) {
+//     this.dhFile = dhFile;
+//   }
 
-  async getId() {
-    const { userEmail } = await useAuthData();
-    const userId = encryptionHash(userEmail);
-    return (await deriveFileIdBin(await this.dhFile.getBlob().getFile(), userId.toString())).str;
-  }
+//   async getId() {
+//     const { userEmail } = await useAuthData();
+//     const userId = encryptionHash(userEmail);
+//     return (await deriveFileIdBin(await this.dhFile.getBlob().getFile(), userId.toString())).str;
+//   }
 
-  async toObject() {
-    return []
-    // const id = await this.getId();
-    // const obj = {} as Record<string, FileObject[]>
-    // obj[id] = [await (new DhFile(this.fileParam)).toObject()]; // hanya berisi satu history
+//   async toObject() {
+//     return []
+//     // const id = await this.getId();
+//     // const obj = {} as Record<string, FileObject[]>
+//     // obj[id] = [await (new DhFile(this.fileParam)).toObject()]; // hanya berisi satu history
 
-  }
-}
+//   }
+// }
 
 export interface ManifestObject {
   "source": string,
@@ -393,7 +393,7 @@ export interface ManifestObject {
   "total_size_bytes": number, // file asli
   "hash_tree_sha256": string, //  diambil dari prop["files"]
   "files": FileObject[],
-  "histories": Record<string, FileObject[]> // string adalah $id file, bisa dapat dari deriveFileId()
+  // "histories": Record<string, FileObject[]> // string adalah $id file, bisa dapat dari deriveFileId()
 }
 
 /**
@@ -421,6 +421,7 @@ export interface ManifestObject {
  *   // setiap file di prop["files"] tidak ada di history
  *   // ada kemungkinan setiap active file akan di rollback ke history sebelumnya (sesuai index history). 
  *   // jika synronizing maka ada kemungkinan "$id" berbeda jika pakai id number/incremented. Jadi solusinya pakai uuid
+ *   // sepertinya history tidak dipakai
  *   "histories": {
  *     "$id": [
  *       {
@@ -442,7 +443,7 @@ export class DhManifest {
   protected totalSizeBytes: number = 0;
   protected files: Set<DhFile> = new Set();
 
-  protected histories: DhHistory[] = [];
+  // protected histories: DhHistory[] = [];
 
 
   constructor(source: string, version: string) {

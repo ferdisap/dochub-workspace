@@ -77,60 +77,6 @@ class UploadController
     ]);
   }
 
-  private function deletingFile(Manifest $manifest, ModelsBlob $blob)
-  {
-    $files = $blob->files;
-    $hash = $blob->hash;
-
-    $fileModelDeleted = [];
-    if ($files->count() > 0) {
-      $dhBlob = new Blob(); // Ws Blob
-      // jika ada di storage
-      if ($dhBlob->isExist($hash)) {
-        // hapus blob model dan manifest model
-        if ($blob->delete()) {
-          if ($manifest->delete()) {
-            // hapus blob storage
-            if ($dhBlob->destroy($hash)) {
-              // delete model file
-              foreach ($files as $fileModel) {
-                if ($fileModel->delete()) {
-                  $fileModelDeleted[] = $fileModel;
-                }
-              }
-              return true;
-            } else {
-              // recreate $manifest model deleted
-              // Log::info("Failed to delete dhBlob", []);
-            }
-          } else {
-            // recreate $blob model deleted
-            // Log::info("Failed to delete manifest model", []);
-          }
-        } else {
-          // recreate file Model deleted here
-          // Log::info("Failed to delete blob model", []);
-        }
-      }
-    }
-    return false;
-  }
-
-  public function deleteFile(Request $request, Manifest $manifest, ModelsBlob $blob)
-  {
-    // validate, jika manifest terhubung ke merges, maka tidak bisa dihapus di sini
-    if ($manifest->merge) {
-      abort(403, "Forbiden to delete file");
-    }
-
-    if ($this->deletingFile($manifest, $blob)) {
-      return response()->json([
-        'blob' => $blob
-      ]);
-    }
-    abort(500, "Failed to delete file");
-  }
-
   public function list(Request $request)
   {
     $manifest = Manifest::whereNull('workspace_id')->where('from_id', (string) $request->user()->id)->where('source', 'LIKE', ManifestSourceType::UPLOAD->value . "%")->limit(env('upload.limit_file'))->get();

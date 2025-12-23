@@ -124,7 +124,7 @@ class EncryptStatic
   /**
    * auto define method threshold or full
    */
-  public static function hashFile(string $absolutePath)
+  public static function hashFile(string $absolutePath, int $thresholdMB = 1)
   {
     $thresholdMB = 1; // default
     $threshold = $thresholdMB * 1024 * 1024; // bytes
@@ -134,13 +134,13 @@ class EncryptStatic
       throw new \InvalidArgumentException("File tidak ditemukan: $absolutePath");
     }
 
-    // jika binary dan sizenya kurang dari limit (2x threshold) maka hash full
-    if ($size <= $threshold * 2) {
-      // konsekuensinya yaitu hash akan tetap SAMA meskipun file pernah diedit (berubah filemtime nya)
-      return self::hashFileFull($absolutePath);
-    } else {
+    if($size > ($threshold * 2)){
       // konsekuensinya yaitu hash BERBEDA meskipun isi filenya sama karena pernah di edit sehingga filemtimenya berbeda
       return self::hashFileThreshold($absolutePath, $thresholdMB);
+    } else {
+      // jika binary dan sizenya kurang dari limit (2x threshold) maka hash full
+      // konsekuensinya yaitu hash akan tetap SAMA meskipun file pernah diedit (berubah filemtime nya)
+      return self::hashFileFull($absolutePath);
     }
   }
 

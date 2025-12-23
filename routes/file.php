@@ -18,4 +18,7 @@ Route::prefix('dochub')->middleware([
   // pada dasarnya file tidak bisa di delete atau diubah isinya kecuali bikin blob baru, lalu merge ke workspace
   // jadi tidak ada route delete, update
   // kecuali file uploadan yang tidak ada merge nya
+
+  // delete uploaded file
+  Route::post('/file/delete/{manifest:hash_tree_sha256}/{blob:hash}', [FileController::class, 'deleteFile'])->middleware('auth')->withoutScopedBindings()->name('dochub.file.delete'); // harus dipasang withoutScopedBindings() karena ada dua model tanpa saling berhubungan langsung
 });
