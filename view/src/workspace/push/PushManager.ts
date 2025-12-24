@@ -1,26 +1,25 @@
-import { route_workspace_check_chunk, route_workspace_push_init, route_workspace_push_process, route_workspace_push_status, route_workspace_upload_chunk } from "view/src/helpers/listRoute";
+import { route_workspace_check_chunk, route_workspace_push_init, route_workspace_push_process, route_workspace_push_status, route_workspace_upload_chunk } from "../../helpers/listRoute";
 import { ChunkUploadManager, StartUploadData, UploadStatus } from "../../upload/ChunkUploadManager";
-import { getCSRFToken } from "view/src/helpers/toDom";
+import { getCSRFToken } from "../../helpers/toDom";
 import { DhFileParam, FileObject } from "../core/DhFile";
 import { ManifestObject } from "../core/DhManifest";
 import { FileNode, loopFolder } from "../analyze/folderUtils";
-import { uploadFile } from "view/src/encryption/ferdi-encryption";
 
 type PushStatus = "processing" | "failed" | "completed";
 
-interface ErrorPushData {
+export interface ErrorPushData {
   status: PushStatus,
   error: Error,
 }
 
-interface ProcessingPushData {
+export interface ProcessingPushData {
   pushId: string;
   jobId: string;
   url: string;
   status: PushStatus;
 }
 
-interface EndPushData {
+export interface EndPushData {
   jobId: string,
   status: string,
   message: string,
@@ -40,43 +39,69 @@ export class PushManager extends ChunkUploadManager {
   onErrorPush?: (data: ErrorPushData) => void;
 
   // source (lama) dan target (baru)
-  async push(sourceManifest: ManifestObject, targetManifest: ManifestObject, file: FileNode) :Promise<void>{
+  async push(sourceManifest: ManifestObject, targetManifest: ManifestObject, file: FileNode): Promise<boolean> {
     try {
-
       if (!targetManifest || !sourceManifest) throw Error('Target and source manifest must be set');
       if (file.kind !== 'directory') throw Error('File must be a directory type');
-  
+
       this._targetManifest = targetManifest;
       this._sourceManifest = sourceManifest;
-  
+
       // #1. init
       await this.initializePush();
-      if(this.onStartPush) this.onStartPush();
-  
+      if (this.onStartPush) this.onStartPush();
+
       // #2, #3, #4, #5, #6 get config and upload file
       const processedFilesMap = new Map<string, FileObject>();
       for (const f of this._processedFiles) processedFilesMap.set(f.relative_path, f);
       let uploadedFiles = <string[]>[]
       await loopFolder(file, async (node) => {
         await this._waitController.wait();
+        // upload file jika ada di processFile map
         if (node.handler.relativePath && processedFilesMap.has(node.handler.relativePath)) {
           const file = await (node.handler as DhFileParam).getFile();
-          uploadedFiles.push(await this.upload(file));
+          let uploadedSize = 0;
+          try {
+            const uploadId = await this.upload(file);
+            uploadedFiles.push(uploadId);
+            await this.pollStatusUpload(uploadId);
+            uploadedSize += file.size;
+          } catch (err) {
+            if (this.onErrorUpload) {
+              const startData = {
+                uploadId: this._uploadId,
+                fileName: file.name,
+                totalBytes: file.size,
+                totalChunks: this._metadata?.totalChunks || 0,
+              };
+              this.onErrorUpload({
+                // start data
+                ...startData,
+                // progress data
+                chunkSize: this._configUpload.chunk_size,
+                totalBytes: file.size,
+                uploadId: this._uploadId!,
+                uploadedSize: uploadedSize,
+                status: "failed",
+                error: err as Error,
+              });
+            }
+          }
         }
       });
-  
+
       // #7. push
-      if (this._processedFiles.length === uploadFile.length) {
+      if (this._processedFiles.length === uploadedFiles.length) {
         const processingPushData = await this.processPush();
         if (this.onProcessingPush) this.onProcessingPush(processingPushData);
       } else {
-        throw new Error("File uploaded not complete");
+        throw new Error("File uploaded not completed");
       }
-  
+
       // #8. status push
-      await this.getStatusPush();
-    } catch(error: any) {
-      if(this.onErrorPush) this.onErrorPush({
+      return await this.pollStatusPush(this._pushId!);
+    } catch (error: any) {
+      if (this.onErrorPush) this.onErrorPush({
         status: "failed",
         error
       })
@@ -90,13 +115,14 @@ export class PushManager extends ChunkUploadManager {
   async initializePush(): Promise<void> {
     try {
       const data = await fetch(route_workspace_push_init(), {
+        method: "POST",
         headers: {
           // 'Accept': 'application/json', // return must json response
           "X-Requested-With": "XMLHttpRequest",
           'Content-Type': 'application/json',
           "X-CSRF-TOKEN": getCSRFToken(),
           // manifest header
-          'X-Source-Manifest-Hash': this._targetManifest!.hash_tree_sha256,
+          'X-Source-Manifest-Hash': this._sourceManifest!.hash_tree_sha256,
         },
         body: JSON.stringify({
           target_manifest: this._targetManifest,
@@ -104,9 +130,9 @@ export class PushManager extends ChunkUploadManager {
         signal: this._abortController ? this._abortController.signal : null,
       }).then(r => r.json());
       this._pushId = data.push_id;
-      this._processedFiles.concat(data.processed_files);
+      this._processedFiles = this._processedFiles.concat(data.processed_files);
     } catch (error) {
-      console.warn("Failed to init push", error);
+      console.warn("Failed to init push.", error);
     }
   }
   // #3. check uploaded chunk  
@@ -147,6 +173,8 @@ export class PushManager extends ChunkUploadManager {
     jobId: string;
     status: UploadStatus;
   }> {
+    // alert('fufuafa');
+    // console.log(this._metadata);
     if (!this._uploadId) throw new Error("No upload ID");
 
     const response = await fetch(route_workspace_upload_chunk(), {
@@ -160,7 +188,6 @@ export class PushManager extends ChunkUploadManager {
       },
       body: JSON.stringify({
         upload_id: this._uploadId,
-        file_name: this._metadata!.fileName,
         file_mtime: this._metadata!.fileMtime,
       }),
       signal: this._abortController ? this._abortController.signal : null,
@@ -189,12 +216,11 @@ export class PushManager extends ChunkUploadManager {
         'X-Target-Manifest-Hash': this._targetManifest!.hash_tree_sha256,
         'X-Source-Manifest-Hash': this._sourceManifest!.hash_tree_sha256
       },
-      body: JSON.stringify({
-        upload_id: this._uploadId,
-        file_mtime: this._metadata!.fileMtime,
-        // label: '', // not required
-        // tags: '', // not required
-      }),
+      // body: JSON.stringify({
+      // upload_id: this._uploadId,
+      // label: '', // not required
+      // tags: '', // not required
+      // }),
       signal: this._abortController ? this._abortController.signal : null,
     });
 
@@ -212,9 +238,9 @@ export class PushManager extends ChunkUploadManager {
     };
   }
   // #8. get push status 
-  async getStatusPush(): Promise<void> {
+  async getStatusPush(pushId:string): Promise<any> {
     if (!this._pushId) throw new Error("No upload ID");
-    const response = await fetch(route_workspace_push_status(this._pushId), {
+    const response = await fetch(route_workspace_push_status(pushId), {
       headers: {
         "X-Requested-With": "XMLHttpRequest",
       },
@@ -235,6 +261,51 @@ export class PushManager extends ChunkUploadManager {
       this._targetManifest = null;
       this._sourceManifest = null;
     }
-    // return data;
+    return data;
+  }
+
+  async pollStatusUpload(uploadId:string, times = 100) :Promise<boolean>{
+    return new Promise((resolve, reject) => {
+      const interval = setInterval(async () => {
+        if (times > 1) {
+          try {
+            const stt = await this.getStatusUpload(uploadId);
+            if (stt.status === "completed" || stt.failed) {
+              clearInterval(interval);
+              resolve(true);
+            }
+          } catch (error) {
+            console.error("Status check failed:", error);
+            clearInterval(interval);
+            reject(error);
+          }
+          times--;
+        } else {
+          clearInterval(interval);
+        }
+      }, 2000);
+    })
+  }
+  async pollStatusPush(pushId:string, times = 100) :Promise<boolean>{
+    return new Promise((resolve, reject) => {
+      const interval = setInterval(async () => {
+        if (times > 0) {
+          try {
+            const stt = await this.getStatusPush(pushId);
+            if (stt.status === "completed" || stt.failed) {
+              clearInterval(interval);
+              resolve(true);
+            }
+          } catch (error) {
+            console.error("Status check failed:", error);
+            clearInterval(interval);
+            reject(error);
+          }
+          times--;
+        } else {
+          clearInterval(interval);
+        }
+      }, 2000);
+    })
   }
 }

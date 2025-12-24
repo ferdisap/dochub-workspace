@@ -363,7 +363,7 @@ class FileUploadProcessJob implements ShouldQueue
         // #4. create record of files from blob
         foreach ($dhManifest->files as $dhFile) {
           // $this->storeFileRecordFromBlob($dhFile["sha256"], $dhFile["relative_path"], $dhFile["size_bytes"], $dhFile["file_modified_at"]);
-          File::createFromWsFile($dhFile, $this->userId, null, 0);
+          File::createFromWsFile($dhFile, $this->userId, 0, 0);
         }
       }
 

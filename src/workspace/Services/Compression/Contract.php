@@ -12,6 +12,11 @@ interface Contract
    * @return string of type compression
    */
   public function type();
+  
+  // /**
+  //  * @return resource | false compression
+  //  */
+  // public function stream();
 
   /**
    * Kompresi streaming (tanpa memory overhead)

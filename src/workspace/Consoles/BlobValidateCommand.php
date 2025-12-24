@@ -75,26 +75,11 @@ class BlobValidateCommand extends Command
   {
     $totalSize = 0;
     $dhBlob = new WorkspaceBlob();
-    $dhBlob->readStream($blob->hash, function ($stream) use(&$totalSize) {
-      while (!feof($stream)) {
-        $chunk = fread($stream, 8192);
-        $totalSize += strlen($chunk);  // Tambahkan panjangnya saja ke counter
-      }
-    });
+    $dhBlob->readStream($blob->hash, function (string $chunk) use(&$totalSize) {
+      $totalSize += strlen($chunk);  // Tambahkan panjangnya saja ke counter
+    }, false, 8192);
     return $totalSize;
   }
-
-  // private function attemptRead(Blob $blob)
-  // {
-  //   $content = '';
-  //   $dhBlob = new WorkspaceBlob();
-  //   $dhBlob->readStream($blob->hash, function ($stream) use(&$content) {
-  //     while (!feof($stream)) {
-  //       $content .= fread($stream, 8192);
-  //     }
-  //   });
-  //   return $content;
-  // }
 
   /**
    * attempt fix file ini masih palsu karena hanya mengubah status file dari compressed menjadi uncompressed

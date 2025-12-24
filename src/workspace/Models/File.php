@@ -3,6 +3,7 @@
 namespace Dochub\Workspace\Models;
 
 use Dochub\Encryption\EncryptStatic;
+use Dochub\Workspace\Blob;
 use Dochub\Workspace\File as WorkspaceFile;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -42,7 +43,7 @@ class File extends Model
     });
   }
 
-  public static function createFromWsFile(WorkspaceFile $dhFile, string $userId, string | null $workspaceId = null, int $mergeId = 0)
+  public static function createFromWsFile(WorkspaceFile $dhFile, string $userId, int $workspaceId = 0, string | int $mergeId = 0)
   {
     $hash = $dhFile->sha256;
     $blobPath = Blob::hashPath($hash);

@@ -115,47 +115,114 @@ class BlobLocalStorage
       throw new \RuntimeException("Manifest not found");
     }
     $maximumSize = config('workspace.read_file_limit', (2 * 1024 * 1024));
-    if(filesize($fullPath) > $maximumSize){
+    if (filesize($fullPath) > $maximumSize) {
       throw new \RuntimeException("Maximum read file is {$maximumSize} bytes");
     }
     return file_get_contents($fullPath);
   }
 
+  // /**
+  //  * Read file contents by streaming resource
+  //  * @param string $hash blob hash
+  //  * @param callable $callback
+  //  * @throws \RuntimeException
+  //  * 
+  //  * contoh cara pakai
+  //  * return response()->stream(
+  //  *   function () use ($hash, $blobLocalStorage) {
+  //  *     $blobLocalStorage->readStream(
+  //  *       $hash,
+  //  *       function ($stream) {
+  //  *         while (!gzeof($stream)) {
+  //  *           echo gzread($stream, 8192);
+  //  *           flush();
+  //  *         }
+  //  *       }
+  //  *     );
+  //  *   }
+  //  * );
+  //  */
+  // public function readStreamGz(string $hash, callable $callback): void
+  // {
+  //   $fullPath = $this->getBlobPath($hash);
+  //   if (!is_readable($fullPath)) {
+  //     throw new \RuntimeException("Manifest not found or not able to read");
+  //   }
+  //   $this->compresser->stream($fullPath, $callback);
+  // }
+  // public function streamGz(string $hash, callable $callback): void
+  // {
+  //   $fullPath = $this->getBlobPath($hash);
+  //   if (!is_readable($fullPath)) {
+  //     throw new \RuntimeException("Manifest not found or not able to read");
+  //   }
+  //   try {
+  //     $this->compresser->stream($fullPath, $callback);
+  //   } catch (Throwable $e) {
+  //     if ($this->isBinaryFile($fullPath)) {
+  //       $stream = fopen($fullPath, 'rb');
+  //     } else {
+  //       $stream = fclose($fullPath, 'r');
+  //     }
+  //     $callback($stream);
+  //     fclose($stream);
+  //   }
+  // }
+
   /**
    * Read file contents by streaming resource
    * @param string $hash blob hash
    * @param callable $callback
+   * @param boolean $flush
+   * @param int $readSizeBytes
    * @throws \RuntimeException
    * 
-   * contoh cara pakai
-   * return response()->stream(
-   *   function () use ($hash, $blobLocalStorage) {
-   *     $blobLocalStorage->readStream(
-   *       $hash,
-   *       function ($stream) {
-   *         while (!feof($stream)) {
-   *           echo fread($stream, 8192);
-   *           flush();
-   *         }
-   *       }
-   *     );
-   *   }
-   * );
+   * contoh di laravel:
+   * response()->stream(
+   *  function() use($pathToFile) {
+   *    $callback = fn($str) => echo $str
+   *    stream($pathToFile, $callback)
+   *  }
+   * )
    */
-  public function readStream(string $hash, callable $callback) :void
+  public function readStream(string $hash, callable $callback, $flush = false, $readSizeBytes = 8192)
   {
     $fullPath = $this->getBlobPath($hash);
-    if (!file_exists($fullPath)) {
-      throw new \RuntimeException("Manifest not found");
+    if (!is_readable($fullPath)) {
+      throw new \RuntimeException("Manifest not found or not able to read");
+    }
+
+    $mime = mime_content_type($fullPath);
+    if(in_array($mime, ['application/gzip', 'application/x-gzip', 'application/x-gzip-compressed', 'application/x-tar'])){
+      $this->compresser->decompressStream($fullPath, $callback, $flush, $readSizeBytes);
+    }
+    $stream = fopen($fullPath, 'rb');
+    if ($stream === false) {
+      throw new \RuntimeException("Unable to stream manifest");
     }
     try {
-      $this->compresser->decompressStream($fullPath, $callback);
-    } catch(Throwable $e) {
-      $stream = gzopen($fullPath, 'rb');
-      $callback($stream);
+      while (!feof($stream)) {
+        $data = fread($stream, $readSizeBytes);
+        // Cek jika data ada (menghindari callback dengan string kosong)
+        if ($data !== false && $data !== '') {
+          $callback($data);
+
+          // Pastikan output buffer Laravel bersih
+          if ($flush &&  ob_get_level() > 0) {
+            ob_flush();
+          }
+          flush();
+        }
+      }
+    } finally {
       fclose($stream);
     }
   }
+  // if ($this->isBinaryFile($fullPath)) {
+  //   return fopen($fullPath, 'rb');
+  // } else {
+  //   return fclose($fullPath, 'r');
+  // }
 
   /**
    * Simpan file ke blob storage
@@ -185,7 +252,7 @@ class BlobLocalStorage
 
     // #2. Cek deduplikasi dan file blob sudah ada dan sudah di @chmod 0444 atau belum, true  = sudah ada
     $blobPath = $this->getBlobPath($hash);
-    if(file_exists($blobPath) && !is_writable($blobPath)) return $hash;
+    if (file_exists($blobPath) && !is_writable($blobPath)) return $hash;
     // #2. Cek deduplikasi: jika blob sudah ada, langsung return
     if ($this->blobExists($hash)) {
       return $hash;
@@ -193,7 +260,7 @@ class BlobLocalStorage
 
     // #3. Simpan file ke blob storage (atomic, dengan lock)
     $this->storeFileAtomicCompress($filePath, $hash, $metadata);
-    
+
     // #4. Simpan metadata ke database
     $this->storeMetadataToDb($hash, $size,  $metadata);
 
@@ -238,7 +305,7 @@ class BlobLocalStorage
       return EncryptStatic::hashFileThreshold($filePath, self::$partialHashByte);
     }
   }
-  
+
 
   /**
    * Hindari baca 1 GB file hanya untuk verifikasi
@@ -379,7 +446,7 @@ class BlobLocalStorage
 
     // 🔑 Putuskan apakah perlu dikompres
     $shouldCompress = !$isBinary && !$isAlreadyCompressed;
-    $metadata["stored_size_bytes"] = 0;    
+    $metadata["stored_size_bytes"] = 0;
 
     $this->lockManager->withLock(
       $lockKey,
@@ -424,7 +491,7 @@ class BlobLocalStorage
       },
       Config::get('lock.default_timeout_ms', 30000)
     );
-    
+
     $metadata["stored_size_bytes"] = filesize($blobPath);
   }
 
@@ -524,8 +591,9 @@ class BlobLocalStorage
    */
   public function getBlobPath(string $hash): string
   {
-    $subDir = substr($hash, 0, 2);
-    return Workspace::blobPath() . "/{$subDir}/{$hash}";
+    return Blob::hashPath($hash);
+    // $subDir = substr($hash, 0, 2);
+    // return Workspace::blobPath() . "/{$subDir}/{$hash}";
   }
 
   /**
@@ -533,24 +601,71 @@ class BlobLocalStorage
    */
   private function isBinaryFile(string $path): bool
   {
+    // 1. Cek keberadaan dan izin akses (Crucial)
+    if (!is_file($path) || !is_readable($path)) {
+      return false;
+    }
+
+    // 2. Cek ukuran file (File 0 byte bukan binary)
+    if (filesize($path) === 0) {
+      return false;
+    }
+
     $handle = fopen($path, 'rb');
+    if (!$handle) return false;
+
     $sample = fread($handle, 1024); // baca 1 KB pertama
     fclose($handle);
-    
-    // jika tidak ada isinya dianggap binary file true
-    if(!$sample){
+
+    if ($sample === false || $sample === '') {
+      return false;
+    }
+
+    // 3. Cek Null Byte (Metode tercepat & paling akurat untuk binary)
+    // str_contains jauh lebih cepat di PHP 8 daripada strpos
+    if (str_contains($sample, "\x00")) {
       return true;
     }
 
-    // Cek null byte (indikator kuat binary)
-    if (strpos($sample, "\x00") !== false) {
-      return true;
+    // 4. Cek Rasio Karakter Printable
+    // Kita hapus karakter kontrol umum (tab, newline, carriage return) agar tidak dianggap binary
+    $text = str_replace(["\n", "\r", "\t"], '', $sample);
+
+    // ctype_print jauh lebih ringan daripada preg_match_all (tanpa regex engine)
+    $printableCount = 0;
+    $len = strlen($text);
+    if ($len === 0) return false;
+
+    for ($i = 0; $i < $len; $i++) {
+      if (ctype_print($text[$i])) {
+        $printableCount++;
+      }
     }
 
-    // Cek rasio printable chars
-    $printable = preg_match_all('/[\x20-\x7E]/', $sample);
-    return ($printable / strlen($sample)) < 0.7; // <70% printable = binary
+    // Jika < 70% karakter bisa dicetak, kemungkinan besar binary
+    return ($printableCount / $len) < 0.7;
   }
+
+  // private function isBinaryFile(string $path): bool
+  // {
+  //   $handle = fopen($path, 'rb');
+  //   $sample = fread($handle, 1024); // baca 1 KB pertama
+  //   fclose($handle);
+    
+  //   // jika tidak ada isinya dianggap binary file true
+  //   if(!$sample){
+  //     return true;
+  //   }
+
+  //   // Cek null byte (indikator kuat binary)
+  //   if (strpos($sample, "\x00") !== false) {
+  //     return true;
+  //   }
+
+  //   // Cek rasio printable chars
+  //   $printable = preg_match_all('/[\x20-\x7E]/', $sample);
+  //   return ($printable / strlen($sample)) < 0.7; // <70% printable = binary
+  // }
 
   /**
    * @deprecated
@@ -582,25 +697,25 @@ class BlobLocalStorage
    *     return hash_final($ctx);
    * });
    */
-  public function withBlobContent(string $hash, string | null $compressionType, callable $callback)
-  {
-    $stream = $this->getBlobContent($hash, $compressionType, true);
+  // public function withBlobContent(string $hash, string | null $compressionType, callable $callback)
+  // {
+  //   $stream = $this->getBlobContent($hash, $compressionType, true);
 
-    if (!$stream) {
-      throw new RuntimeException("Cannot open blob: {$hash}");
-    }
+  //   if (!$stream) {
+  //     throw new RuntimeException("Cannot open blob: {$hash}");
+  //   }
 
-    try {
-      return $callback($stream);
-    }
-    // catch (\Exception $e) {
-    //   dd('aa');
-    //   dd($e);
-    // }
-    finally {
-      fclose($stream);
-    }
-  }
+  //   try {
+  //     return $callback($stream);
+  //   }
+  //   // catch (\Exception $e) {
+  //   //   dd('aa');
+  //   //   dd($e);
+  //   // }
+  //   finally {
+  //     fclose($stream);
+  //   }
+  // }
 
   /**
    * @deprecated
@@ -631,30 +746,30 @@ class BlobLocalStorage
    *   }
    *
    */
-  public function getBlobContent(string $hash, string | null $compressionType, bool $asStream = false)
-  {
-    $path = $this->getBlobPath($hash);
+  // public function getBlobContent(string $hash, string | null $compressionType, bool $asStream = false)
+  // {
+  //   $path = $this->getBlobPath($hash);
 
-    if (!file_exists($path)) {
-      throw new RuntimeException("Blob file not found: {$hash}");
-    }
+  //   if (!file_exists($path)) {
+  //     throw new RuntimeException("Blob file not found: {$hash}");
+  //   }
 
-    // 🔑 Cek apakah perlu di-uncompress
-    if ($compressionType && $compressionType === 'gzip') {
-      return $this->decompressGzipBlob($path, $asStream);
-    } else {
-      throw new RuntimeException("Unsupported compression type: {$compressionType}");
-    }
+  //   // 🔑 Cek apakah perlu di-uncompress
+  //   if ($compressionType && $compressionType === 'gzip') {
+  //     return $this->decompressGzipBlob($path, $asStream);
+  //   } else {
+  //     throw new RuntimeException("Unsupported compression type: {$compressionType}");
+  //   }
 
-    // File tidak terkompresi
-    if ($asStream) {
-      $stream = fopen($path, 'rb');
-      if (!$stream) throw new RuntimeException("Cannot open blob");
-      return $stream;
-    }
+  //   // File tidak terkompresi
+  //   if ($asStream) {
+  //     $stream = fopen($path, 'rb');
+  //     if (!$stream) throw new RuntimeException("Cannot open blob");
+  //     return $stream;
+  //   }
 
-    return file_get_contents($path);
-  }
+  //   return file_get_contents($path);
+  // }
 
   // /**
   //  * cocok untuk file size kecil

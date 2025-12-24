@@ -9,6 +9,7 @@
 	} from "../../helpers/listRoute";
 	import { getCSRFToken } from "../../helpers/toDom";
 	import { ref, computed, onMounted } from "vue";
+import InlineNotification from "../../components/Notification/InlineNotification.vue";
 
 	// Tipe sesuai dengan respons Laravel
 	type TreeNodeType = "file" | "directory";
@@ -20,318 +21,7 @@
 		created_at?: string,
 	];
 
-	const dummyTreeFlat: TreeFlat[] = [
-		// Root-level directories
-		[
-			"documents/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"images/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"reports/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"uploads/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"backups/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-
-		// Root-level files
-		["README.md", "file", "abcdefghijklmn", "0", "2025-12-12T04:27:13.000000Z"],
-		[
-			"config.json",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"manifest.bin",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-
-		// documents/
-		[
-			"documents/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		], // duplikat diizinkan (grouping tetap aman)
-		[
-			"documents/contract_v2.pdf.enc",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"documents/invoice_2025Q3.pdf.enc",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"documents/specs/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"documents/specs/api_v1.yaml",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"documents/specs/db_schema.sql",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"documents/drafts/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"documents/drafts/meeting_notes.txt",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"documents/drafts/proposal_v0.enc",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-
-		// images/
-		[
-			"images/logo.png",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"images/banner.jpg",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"images/icons/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"images/icons/favicon.ico",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"images/icons/social/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"images/icons/social/twitter.svg",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"images/icons/social/telegram.png",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-
-		// reports/
-		[
-			"reports/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"reports/monthly/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"reports/monthly/january_2025.pdf",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"reports/monthly/february_2025.pdf.enc",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		], // encrypted
-		[
-			"reports/summary_2024.xlsx",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"reports/audit_log.bin.sig",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		], // signature file
-
-		// uploads/ (realistis: hasil upload user)
-		[
-			"uploads/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"uploads/user_123/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"uploads/user_123/file_a.bin.enc",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"uploads/user_123/metadata.json",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"uploads/user_456/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"uploads/user_456/report_final.pdf.enc",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"uploads/temp_upload_session_7a3b.bin",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		], // session chunk
-
-		// backups/
-		[
-			"backups/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"backups/db_20251210.sql.gz",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"backups/keys/",
-			"directory",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		],
-		[
-			"backups/keys/x25519_pubkey.bin",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		], // sesuai minat Anda
-		[
-			"backups/keys/chacha20_key.enc",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		], // encrypted key
-		[
-			"backups/keys/file_id_16b.bin",
-			"file",
-			"abcdefghijklmn",
-			"0",
-			"2025-12-12T04:27:13.000000Z",
-		], // 16-byte deterministic ID
-	];
-
-	const treeFlat = ref<TreeFlat[]>(dummyTreeFlat);
+	const treeFlat = ref<TreeFlat[]>([]);
 	const result = ref<null | {
 		type: "completed" | "failed" | "processing";
 		title: string;
@@ -466,7 +156,12 @@
     const manifestId = file[3];
 		const interval = setInterval(async () => {
 			const stt = await fetch(
-				route_upload_make_workspace_status(manifestId)
+				route_upload_make_workspace_status(manifestId), {
+          method: 'GET',
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+          }
+        }
 			).then((r) => r.json());
 			if (stt.status === "completed" || stt.failed) {
 				clearInterval(interval);
@@ -479,6 +174,8 @@
 			}
 		}, 2000);
 	};
+
+  const checkStatus = () => {}
 
 	onMounted(async () => {
 		// fetch list
@@ -514,7 +211,15 @@
 				<span>📁 Shared Environment</span>
 			</div>
 
-			<div v-if="result" class="result" :class="result.type">
+      <InlineNotification v-if="result" :visible="Boolean(result)" :type="result?.type" :title="result.title" :message="result.message">
+        <template #job-info>
+          <div v-if="result.jobId" class="job-info">
+						<span class="mr-1 text-sm">Job ID: {{ result.jobId }}</span>
+						<button @click="checkStatus" class="btn-sm">Check Status</button>
+					</div>
+        </template>
+      </InlineNotification>
+			<!-- <div v-if="result" class="result" :class="result.type">
 				<div class="result-icon">
 					<svg
 						v-if="result.type === 'completed'"
@@ -545,11 +250,11 @@
 					<h3>{{ result.title }}</h3>
 					<p>{{ result.message }}</p>
 					<div v-if="result.jobId" class="job-info">
-						<span>Job ID: {{ result.jobId }}</span>
+						<span class="mr-1 text-sm">Job ID: {{ result.jobId }}</span>
 						<button @click="checkStatus" class="btn-sm">Check Status</button>
 					</div>
 				</div>
-			</div>
+			</div> -->
 
 			<!-- File List -->
 			<div class="mt-6">

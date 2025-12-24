@@ -267,7 +267,6 @@
 			uploadManager.pause();
 			isPaused.value = true;
 		}
-
 		return isPaused.value;
 	};
 
@@ -413,7 +412,7 @@
 		>
       <template #job-info>
         <div v-if="result?.jobId" class="job-info">
-          <span>Job ID: {{ result.jobId }}</span>
+          <span class="mr-1 text-sm">Job ID: {{ result.jobId }}</span>
           <button @click="checkStatus" class="btn-sm">Check Status</button>
         </div>
       </template>

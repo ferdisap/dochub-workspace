@@ -215,7 +215,7 @@ export class WaitController {
 }
 
 export class ChunkUploadManager {
-  private _configUpload: UploadConfig;
+  protected _configUpload: UploadConfig;
   protected _uploadId: string | null = null;
   protected _abortController: AbortController | null = null;
   protected _metadata: ChunkMetadata | null = null;

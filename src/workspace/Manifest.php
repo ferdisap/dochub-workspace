@@ -42,6 +42,7 @@ use Dochub\Workspace\Workspace;
 //     ]
 //   }
 // }
+
 /**
  * saat ini belum ada fungsi untuk membuat class ini berdasarkan file storage / model database
  */
@@ -74,12 +75,13 @@ class Manifest
     $this->storagePath = $storage_path;
   }
 
-  public static function create(array $manifestArray, $storage_path = '') {
+  public static function create(array $manifestArray, $storage_path = '')
+  {
     $source = $manifestArray["source"];
     $version = $manifestArray["version"];
     $total_files = $manifestArray["total_files"];
     $total_size_bytes = $manifestArray["total_size_bytes"];
-    $files = array_map(function($file) {
+    $files = array_map(function ($file) {
       return File::create($file);
     }, $manifestArray["files"]);
 
@@ -96,7 +98,7 @@ class Manifest
   /**
    * @return string path relative to workspace/manifest
    */
-  public function store() :string
+  public function store(): string
   {
     $manifestLocalStorage = new ManifestLocalStorage();
     $this->storagePath = $manifestLocalStorage->store($this);
@@ -132,7 +134,8 @@ class Manifest
   /**
    * relative path
    */
-  public function storage_path(){
+  public function storage_path()
+  {
     return $this->storagePath;
   }
 
@@ -163,7 +166,68 @@ class Manifest
     return @unlink($path);
   }
 
-  public function toArray(){
+  /**
+   * Mengurutkan array objek secara in-place (hemat RAM).
+   * 
+   * @param array &$data Referensi ke array (menggunakan & agar tidak copy-on-write)
+   * @param string $sortBy Kunci pengurutan ('size' atau 'relative_path')
+   * @param string $order 'asc' atau 'desc'
+   */
+  private function sortFileDataInPlace(array &$data, string $sortBy, string $order = 'asc'): void
+  {
+    $isAsc = $order === 'asc';
+
+    usort($data, function ($a, $b) use ($sortBy, $isAsc) {
+      $valA = $a[$sortBy] ?? ($sortBy === 'size' ? 0 : '');
+      $valB = $b[$sortBy] ?? ($sortBy === 'size' ? 0 : '');
+
+      if ($valA === $valB) {
+        return 0;
+      }
+
+      // Spaceship operator (<=>) sangat efisien di PHP 7+ dan PHP 8
+      // Menghasilkan -1, 0, atau 1 secara otomatis
+      $comparison = $valA <=> $valB;
+
+      return $isAsc ? $comparison : -$comparison;
+    });
+  }
+
+  public function ensureTotalFiles() :int
+  {
+    return $this->total_files = count($this->files);
+  }
+
+  public function ensureTotalSizeBytes():int
+  {
+    $totalSize = 0;
+    foreach ($this->files as $wsFile) {
+      $totalSize += $wsFile->size_bytes;
+    }
+    return $this->total_size_bytes = $totalSize;
+  }
+
+  // // Contoh Penggunaan:
+  // $files = [
+  //     ['relative_path' => 'images/logo.png', 'size' => 1500],
+  //     ['relative_path' => 'docs/readme.md', 'size' => 500],
+  //     ['relative_path' => 'assets/style.css', 'size' => 2000],
+  // ];
+
+  // // Mengurutkan langsung pada variabel $files (hemat RAM)
+  // sortFileDataInPlace($files, 'size', 'desc');
+
+  // print_r($files);
+
+
+  public function toArray()
+  {
+    $files = array_map(function (File $file) {
+      return $file->toArray();
+    }, $this->files);
+
+    $this->sortFileDataInPlace($files, 'size_bytes');
+
     return [
       'source' => $this->source,
       'version' => $this->version,
@@ -171,18 +235,17 @@ class Manifest
       'total_size_bytes' => $this->total_size_bytes,
       'hash_tree_sha256' => $this->hash_tree_sha256,
       'tags' => $this->tags,
-      'files' => array_map(function($file) {
-        return $file->toArray();
-      },$this->files),
-      "history" => array_walk($this->history, function(&$files, $id) {
-        return array_map(function($file) {
-          return $file->toArray();
-        },$files);
-      }),
+      'files' => $files,
+      // "history" => array_walk($this->history, function (&$filesInHistory, $id) {
+      //   return array_map(function ($file) {
+      //     return $file->toArray();
+      //   }, $filesInHistory);
+      // }),
     ];
   }
 
-  public function __toArray(){
+  public function __toArray()
+  {
     return $this->toArray();
   }
 }

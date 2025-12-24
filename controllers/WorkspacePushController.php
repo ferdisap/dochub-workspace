@@ -12,6 +12,7 @@ use Dochub\Workspace\Models\Merge;
 use Dochub\Workspace\Models\MergeSession;
 use Dochub\Workspace\Models\Workspace;
 use Dochub\Workspace\Workspace as DochubWorkspace;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Response;
@@ -80,7 +81,7 @@ class WorkspacePushController extends UploadNativeController
   public function init(Request $request)
   {
     $targetManifest = $request->input('target_manifest');
-    $targetManifestArray = json_decode($targetManifest, true);
+    $targetManifestArray = is_string($targetManifest) ? json_decode($targetManifest, true) : $targetManifest;
     $targetManifestHash = $targetManifestArray['hash_tree_sha256'];
     if (Manifest::where('hash_tree_sha256', $targetManifestHash)->where('from_id', $request->user()->id)->count() > 0) {
       return response()->json(['error' => 'Target manifest already exist'], 403); // forbidden
@@ -92,14 +93,20 @@ class WorkspacePushController extends UploadNativeController
         $processedFiles[] = $file;
       }
     }
-    if (count($processedFiles) < 1) return response()->json(['error' => 'No need file to be processed'], 500); // server error, karena tidak ada file yang perlu di processed
-
+    // if (count($processedFiles) < 1) return response()->json(['error' => 'No need file to be processed'], 500); // server error, karena tidak ada file yang perlu di processed
     $sourceManifestHash = $request->header('X-Source-Manifest-Hash');
+    $workspaceModel = Workspace::whereHas('manifests', function(Builder $query) use($sourceManifestHash) {
+      $query->where('hash_tree_sha256', $sourceManifestHash);
+    })->where('owner_id', $request->user()->id)->count();
+    // dd($workspaceModel, $sourceManifestHash);
+    if($workspaceModel < 1) return response()->json(['error' => 'There is no such source manifest'], 400); // forbidden
+
     $sourceManifestModel = Manifest::where('hash_tree_sha256', $sourceManifestHash)->where('from_id', $request->user()->id)->first();
-    $sourceManifestArray = $sourceManifestModel->content;
+    $sourceManifestArray = $sourceManifestModel?->content->toArray();
+
 
     // save list file will processed
-    $this->set_source_file_processed($targetManifest, $processedFiles);
+    $this->set_source_file_processed($targetManifestHash, $processedFiles);
     // save manifest to cache (File)
     $this->set_target_manifest($targetManifestHash, $targetManifestArray);
     $this->set_source_manifest($sourceManifestHash, $sourceManifestArray);
@@ -128,10 +135,14 @@ class WorkspacePushController extends UploadNativeController
 
     $targetManifestHash = $request->header('X-Target-Manifest-Hash');
     $processedFiles = $this->get_source_file_processed($targetManifestHash);
+    if(count($processedFiles) < 1) return response()->json(['error' => 'File processing data not found'], 400);
+    $processedFiles = array_map(function($file) {
+      return $file['sha256'];
+    }, $this->get_source_file_processed($targetManifestHash));
 
     $hash = $request->header('X-File-Hash'); // hash_blob
-    if (!in_array($hash, $processedFiles, true)) return response(null, 403); // forbidden
-
+    if (!in_array($hash, $processedFiles, true)) return response()->json(['error' => 'Forbidden'], 400);
+    
     $uploadId = $request->header('X-Upload-Id');
     $chunkId = $request->header('X-Chunk-Id');
 
@@ -249,14 +260,14 @@ class WorkspacePushController extends UploadNativeController
     $this->set_metadata(["updated_at" => now()->timestamp, "status" => 'processing'], $pushId);
     // #1. check semua file yang di upload berdasarkan processedFile, apakah sudah ada blobnya di database dan di localstorage, atau belum.
     $processedFiles = $this->get_source_file_processed($targetManifestHash);
-    $isProcessedCount = 0;
+    $totalFileProcessedToBlob = 0;
     foreach ($processedFiles as $file) {
       $fileHash = $file["sha256"];
       if (Blob::where('hash', $fileHash)->count() > 0) {
-        $isProcessedCount++;
+        $totalFileProcessedToBlob++;
       }
     }
-    if ($isProcessedCount != count($processedFiles)) return response()->json(['error' => 'File processed not complete'], 422);
+    if ($totalFileProcessedToBlob != count($processedFiles)) return response()->json(['error' => 'File processed not complete'], 422);
     // #2. jika sudah ada semua maka ambil setiap relative path di processedFile. Lalu ganti relativePath yang sama di $sourceManifest['files] dengan yang processedFile.
     // karena target manifest (baru) sudah diberikan di awal saat init() maka pakai itu saja
     $targetManifestArray = $this->get_target_manifest($targetManifestHash);
@@ -264,23 +275,29 @@ class WorkspacePushController extends UploadNativeController
     if (Manifest::where('hash_tree_sha256', $targetManifestHash)->where('from_id', $userId)->count() > 0) {
       return response()->json(['error' => 'Target manifest already exist'], 403); // forbidden
     }
-    $workspaceModel = Manifest::where('hash_tree_sha256', $sourceManifestHash)->where('from_id', $userId)->first();
+    $workspaceModel = Workspace::whereHas('manifests', function(Builder $query) use($sourceManifestHash) {
+      $query->where('hash_tree_sha256', $sourceManifestHash);
+    })->where('owner_id', $userId)->firstOrFail();
     if (!$workspaceModel) return response()->json(['error' => 'Source workspace not found'], 404);
     // #4. simpan manifest baru, update merge session, buat merge baru.
     $dhManifest = WorkspaceManifest::create($targetManifestArray);
+    $dhManifest->ensureTotalFiles(); // karena nol di manifest nya
+    $dhManifest->ensureTotalSizeBytes(); // karena nol di manifest nya
     $dhManifest->tags = $tags;
     $dhManifest->store();
     // create manifest
     $manifestModel = Manifest::createByWsManifest($dhManifest, $userId, $workspaceModel->id);
+    $mergeModel = null;
     try {
       // create merge
-      $mergeModel = Merge::create([
+      $fillable = [
         'workspace_id' => $workspaceModel->id,
         'manifest_hash' => $targetManifestArray['hash_tree_sha256'],
         'label' => $label,
         'merged_at' => now(),
         'message' => 'merge is done by pushing manifest ' . $targetManifestArray['hash_tree_sha256'],
-      ]);
+      ];
+      $mergeModel = Merge::create($fillable);
       try {
         // create session
         $mergeSessionModel = MergeSession::create([
@@ -306,25 +323,30 @@ class WorkspacePushController extends UploadNativeController
           $mergeSessionModel->delete();
           $mergeModel->delete();
           $manifestModel->delete();
+          throw $th;
         }
       } catch (\Throwable $th) {
         $mergeModel->delete();
         $manifestModel->delete();
+        throw $th;
       }
     } catch (\Throwable $th) {
       $manifestModel->delete();
+      throw $th;
     }
     // create file
-    foreach ($dhManifest->files as $dhFile) {
-      File::createFromWsFile($dhFile, $userId, $workspaceModel->id, $mergeModel->id);
+    if($mergeModel){
+      foreach ($dhManifest->files as $dhFile) {
+        File::createFromWsFile($dhFile, $userId, $workspaceModel->id, $mergeModel->id);
+      }
+      $this->set_metadata(["updated_at" => now()->timestamp, "status" => 'completed'], $pushId);
+      return response()->json([
+        'push_id' => $pushId,
+        'job_id' => 0, // karena tidak ada job jadi diberi 0
+        'status' => 'processing',
+      ]);
     }
     // #5. done
-    $this->set_metadata(["updated_at" => now()->timestamp, "status" => 'completed'], $pushId);
-    return response()->json([
-      'push_id' => $pushId,
-      'job_id' => 0, // karena tidak ada job jadi diberi 0
-      'status' => 'processing',
-    ]);
   }
 
   /**

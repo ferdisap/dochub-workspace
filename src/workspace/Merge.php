@@ -31,7 +31,7 @@ class Merge
   {
     if (!self::isValidLabel($label)) {
       $new_string = preg_replace(self::getUnallowedLablePattern(), "", $label);
-      return substr($new_string, 0, self::getMaxLength());
+      return substr($new_string, 0, self::getMaxLengthLabel());
     } 
     return $label;
   }

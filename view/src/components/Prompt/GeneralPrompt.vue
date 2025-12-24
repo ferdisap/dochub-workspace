@@ -32,10 +32,11 @@
 		(e: "update:modelValue", value: boolean): void;
 		(e: "result", value: string | null): void;
 		(e: "close"): void;
+		(e: "cancel"): void;
 	}>();
 
 	const inputRef = ref<HTMLInputElement | HTMLTextAreaElement | null>(null);
-	const inputValue = ref(props.defaultValue);
+	const inputValue = ref(props.defaultValue ? props.defaultValue : null);
 	const isSubmitting = ref(false);
 
 	// Sinkronisasi modelValue → internal visible
@@ -82,7 +83,7 @@
 
 	// Kirim hasil & tutup
 	const submit = async () => {
-		if (props.required && !inputValue.value.trim()) {
+		if (props.required && (inputValue.value && !inputValue.value.trim())) {
 			inputRef.value?.focus();
 			return;
 		}
@@ -98,7 +99,7 @@
 
 	// Cancel → kirim null
 	const cancel = () => {
-		emit("result", null);
+    emit("cancel");
 		close();
 	};
 </script>
@@ -195,7 +196,7 @@
 							<button
 								type="button"
 								@click="submit"
-								:disabled="isSubmitting || (required && !inputValue.trim())"
+								:disabled="isSubmitting || (required && Boolean(inputValue && !inputValue.trim()))"
 								class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition"
 							>
 								<span v-if="isSubmitting" class="flex items-center">

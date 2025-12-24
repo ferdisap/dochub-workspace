@@ -46,7 +46,9 @@ class Merge extends Model
         $model->{$model->getKeyName()} = (string) Str::uuid();
       }
       // clean label to valid form
-      $model->label = WorkspaceMerge::cleanLabel($model->label);
+      if($model->label) {
+        $model->label = WorkspaceMerge::cleanLabel($model->label);
+      }
     });
   }
 

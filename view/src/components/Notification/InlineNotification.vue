@@ -74,7 +74,7 @@
 			<p>{{ props.message }}</p>
 			<slot name="job-info"></slot>
 			<!-- <div v-if="props.jobId" class="job-info">
-				<span>Job ID: {{ props.jobId }}</span>
+				<span class="mr-1 text-sm">Job ID: {{ props.jobId }}</span>
 				<button @click="checkStatus" class="btn-sm">Check Status</button>
 			</div> -->
 		</div>

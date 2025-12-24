@@ -2,6 +2,8 @@
 
 namespace Dochub\Workspace;
 
+use Dochub\Workspace\Models\Manifest;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Config;
 

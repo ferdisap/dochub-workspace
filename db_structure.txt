@@ -76,7 +76,9 @@ Schema::create('dochub_files', function (Blueprint $table) {
         ->comment("How this file changed in this merge");
     
     $table->unsignedBigInteger('size_bytes');
-    // $table->timestamp('file_modified_at'); // mtime dari file asli, dihapus saja karena tidak berguna, bisa diambil dari filemtime($path)
+    // mtime dari file asli, dihapus saja karena tidak berguna, bisa diambil dari filemtime($path)
+    // tetap ada untuk mempermudah membuat hash manifest
+    $table->timestamp('file_modified_at'); 
     
     // tidak boleh unique karena jika unique, tidak bisa rollback karena rollback tidak akan membuat merge record baru
     // jika relative path tidak boleh unique karena ada kemungkinan relative_path akan ada sama walaupun workspace berbeda

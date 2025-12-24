@@ -94,36 +94,79 @@ class Gzip implements Contract
     // }
   }
 
+  // /**
+  //  * Kompresi streaming (tanpa memory overhead)
+  //  * Contoh pakai:
+  //  * return response()->stream(
+  //  *   function () use ($hash, $blobLocalStorage) {
+  //  *     $blobLocalStorage->readStream(
+  //  *       $hash,
+  //  *       function ($stream) {
+  //  *         while (!feof($stream)) {
+  //  *           echo gzread($stream, 8192);
+  //  *           flush();
+  //  *         }
+  //  *       }
+  //  *     );
+  //  *   }
+  //  * );
+  //  * @param resource $source
+  //  * @param resource $dest
+  //  * @param array $metadata
+  //  * @throws \RuntimeException
+  //  */
+  // public function stream(string $path, callable $callback): void
+  // {
+  //   $gz = gzopen($path, 'rb');
+  //   if (!$gz) {
+  //     gzclose($gz);
+  //     throw new RuntimeException("Cannot open compressed blob");
+  //   }
+  //   $callback($gz);
+  //   gzclose($gz);
+  // }
+
   /**
-   * Kompresi streaming (tanpa memory overhead)
-   * Contoh pakai:
-   * return response()->stream(
-   *   function () use ($hash, $blobLocalStorage) {
-   *     $blobLocalStorage->readStream(
-   *       $hash,
-   *       function ($stream) {
-   *         while (!feof($stream)) {
-   *           echo fread($stream, 8192);
-   *           flush();
-   *         }
-   *       }
-   *     );
-   *   }
-   * );
-   * @param resource $source
-   * @param resource $dest
-   * @param array $metadata
+   * Read file contents by streaming resource
+   * @param string $fullPath (absolute path)
+   * @param callable $callback
+   * @param boolean $flush
+   * @param int $readSizeBytes
    * @throws \RuntimeException
+   * 
+   * contoh di laravel: (direkomndasikan dipanggil dari BlobLocalStorage)
+   * response()->stream(
+   *  function() use($pathToFile) {
+   *    $callback = fn($str) => echo $str
+   *    stream($pathToFile, $callback)
+   *  }
+   * )
    */
-  public function decompressStream(string $path, callable $callback): void
+  public function decompressStream(string $fullPath, callable $callback, $flush = false, $readSizeBytes = 8192) :void
   {
-    $gz = gzopen($path, 'rb');
-    if (!$gz) {
-      fclose($gz);
-      throw new RuntimeException("Cannot open compressed blob");
+    $stream = gzopen($fullPath, 'rb');
+    if ($stream === false) {
+      throw new \RuntimeException("Unable to stream manifest");
     }
-    $callback($gz);
-    fclose($gz);
+    try {
+      while (!gzeof($stream)) {
+        $data = gzread($stream, $readSizeBytes);
+        // Cek jika data ada (menghindari callback dengan string kosong)
+        if ($data !== false && $data !== '') {
+          $callback($data);
+
+          // Pastikan output buffer Laravel bersih
+          if ($flush && ob_get_level() > 0) {
+            ob_flush();
+          }
+          flush();
+        }
+      }
+    } finally {
+      // PERBAIKAN: Wajib pakai gzclose, bukan fclose
+      // Karena resource berasal dari gzopen
+      gzclose($stream);
+    }
   }
 
   /**

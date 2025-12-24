@@ -35,7 +35,7 @@ class ManifestController
   // http://localhost:1001/dochub/manifest/search?query=hash:aa4d977d2bf8d2775ae3c2fc93e97d2455f4ff52f8b082b1e24f86bd7eb18ba7
   // http://localhost:1001/dochub/manifest/search?query=source:upload:user-d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35
   // return 422 jika "X-Requested-With": "XMLHttpRequest", atau 302 found (redirect)
-  public function searchManifest(Request $request)
+  public function searchManifests(Request $request)
   {
     $qType = null;
     $qString = null;
@@ -75,7 +75,7 @@ class ManifestController
       ],
     ]);
 
-    $manifestModel = (match ($qType) {
+    $manifestModels = (match ($qType) {
       'name' => Manifest::where('workspace_id', Workspace::where('name', $qString)->where("owner_id", $request->user()->id)->value('id'))->first(),
       'version' => Manifest::where('version', $qString)->first(),
       'source' => Manifest::where('source', $qString)->first(),
@@ -85,11 +85,17 @@ class ManifestController
       })
     })
       ->where('from_id', $request->user()->id)
-      ->first();
+      ->latest('created_at')  // Orders by 'created_at' DESC
+      ->limit(5)
+      ->get();
 
-    if ($manifestModel) {
+    $manifestModels = $manifestModels->map(function($manifestModel) {
+      return $manifestModel->content;
+    });
+
+    if ($manifestModels) {
       return response([
-        "manifest" => $manifestModel->content
+        "manifests" => $manifestModels
       ]);
     } else {
       return response(null, 404);

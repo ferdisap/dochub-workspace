@@ -101,6 +101,6 @@ export function route_workspace_push_process() {
   return '/dochub/workspace/push/process'; // POST
 }
 export function route_workspace_push_status(pushId:string) {
-  return `/dochub/workspace/push/process/${pushId}`; // GET
+  return `/dochub/workspace/push/status/${pushId}`; // GET
 }
 // Route::get('/workspace/push/{id}/status', [WorkspacePushController::class, 'statusPush'])->middleware('auth')->name('dochub.upload.status');  

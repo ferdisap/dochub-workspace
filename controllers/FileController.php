@@ -15,15 +15,9 @@ class FileController
     $hash = $blob->hash;
     return response()->stream(
       function () use ($hash, $dhBlob) {
-        $dhBlob->readStream(
-          $hash,
-          function ($stream) {
-            while (!feof($stream)) {
-              echo fread($stream, 8192);
-              flush();
-            }
-          }
-        );
+        $dhBlob->readStream($hash, function(string $content){
+          echo $content;
+        });
       },
       200,
       [
@@ -44,7 +38,7 @@ class FileController
       abort(403, "Forbiden to delete file");
     }
 
-    if ($this->deletingFile($manifest, $blob)) {
+    if (self::deletingFile($manifest, $blob)) {
       return response()->json([
         'blob' => $blob
       ]);
@@ -52,7 +46,7 @@ class FileController
     abort(500, "Failed to delete file");
   }
 
-  private function deletingFile(Manifest $manifest, ModelsBlob $blob)
+  public static function deletingFile(Manifest $manifest, ModelsBlob $blob)
   {
     $files = $blob->files;
     $hash = $blob->hash;

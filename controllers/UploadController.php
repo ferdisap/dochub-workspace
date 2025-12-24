@@ -168,7 +168,7 @@ class UploadController
       unset($data_return['manifest_model']);
 
       if ($cleaned) {
-        $deleted = $this->deletingFile($manifestModel, $blobModel);
+        $deleted = FileController::deletingFile($manifestModel, $blobModel);
         if ($deleted) {
           return response()->json([
             'process_id' => $id,

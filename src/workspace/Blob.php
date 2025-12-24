@@ -71,7 +71,7 @@ class Blob
           $processed++;
   
           $total_size_bytes += $filesize;
-          $dhFiles[] = new File($relativePath, $hash, $filesize, $mtime);
+          $dhFiles[] = new File($relativePath, $hash, $filesize, (int) $mtime);
           
           $callback($hash, $relativePath, $filePath, $filesize, $mtime, null, $processed, $total_files);
         } else {
@@ -88,10 +88,7 @@ class Blob
   public function store(string $userId, string $source, array $files, callable $callback) :Manifest
   {
     $total_size_bytes = 0;
-    $dhFiles = array_map(
-      fn ($dhFile) => $dhFile->toArray(),
-      $this->justStore($files, $total_size_bytes, $callback)
-    );
+    $dhFiles = $this->justStore($files, $total_size_bytes, $callback);
     $version = ManifestVersionParser::makeVersion();
     $total_files = count($files);
     $dhManifest = new Manifest(
@@ -101,8 +98,8 @@ class Blob
     return $dhManifest;
   }
 
-  public function readStream(string $hash, callable $callback){
-    return $this->blobStorage->readStream($hash, $callback);
+  public function readStream(string $hash, callable $callback, $flush = false, $readSizeBytes = 8192){
+    return $this->blobStorage->readStream($hash, $callback, $flush, $readSizeBytes);
   }
 
   public function isExist(string $hash){

@@ -5,6 +5,7 @@ namespace Dochub\Workspace\Models;
 use Dochub\Workspace\Workspace as DochubWorkspace;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Str;
@@ -113,6 +114,11 @@ class Workspace extends Model
       'result_merge_id'       // FK di tabel sessions (menunjuk ke merges)
     )
       ->latest('dochub_merges.merged_at'); // Mengambil yang paling baru berdasarkan created_at
+  }
+
+  public function manifests() :HasMany
+  {
+    return $this->hasMany(Manifest::class, 'workspace_id', 'id');
   }
 
   /**

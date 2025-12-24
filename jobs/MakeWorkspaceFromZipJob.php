@@ -10,6 +10,7 @@ use Dochub\Workspace\Enums\ManifestSourceType;
 use Dochub\Workspace\File;
 use Dochub\Workspace\Manifest as WorkspaceManifest;
 use Dochub\Workspace\Models\Blob as ModelsBlob;
+use Dochub\Workspace\Models\File as ModelsFile;
 use Dochub\Workspace\Models\Manifest as ModelManifest;
 use Dochub\Workspace\Models\Merge;
 use Dochub\Workspace\Models\MergeSession;
@@ -148,7 +149,8 @@ class MakeWorkspaceFromZipJob extends FileUploadProcessJob implements ShouldQueu
 
         // #5. create record of files from blob
         foreach ($dhManifest->files as $dhFileinZip) {
-          $this->storeFileRecordFromBlob($dhFileinZip["sha256"], $dhFileinZip["relative_path"], $dhFileinZip["size_bytes"], $dhFileinZip["file_modified_at"], (int) $workspaceModel->id, (string) $mergeModel->id);
+          // $this->storeFileRecordFromBlob($dhFileinZip["sha256"], $dhFileinZip["relative_path"], $dhFileinZip["size_bytes"], $dhFileinZip["file_modified_at"], (int) $workspaceModel->id, (string) $mergeModel->id);
+          ModelsFile::createFromWsFile($dhFileinZip, $this->userId, 0, 0);
         }
       }
 

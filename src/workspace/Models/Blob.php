@@ -80,10 +80,16 @@ class Blob extends Model
   /**
    * @return resource|falsee Stream yang HARUS di-fclose() oleh consumer
    */
+  public function readStream(callable $callback)
+  {
+    return (new WorkspaceBlob)->readStream($this->hash, $callback);
+  }
+  
   public function getContentStream()
   {
-    $blobStorage = app(BlobLocalStorage::class);
-    return $blobStorage->getBlobContent($this->hash, $this->compression_type, true);
+    (new WorkspaceBlob)->readStream($this->hash, function(string $content){
+      echo $content;
+    }, true);
   }
 
   /**
