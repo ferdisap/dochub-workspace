@@ -16,6 +16,8 @@ Route::prefix('dochub')->middleware([
    * ---------
    */
   Route::get('/workspace/detail/{workspace:name}', [WorkspaceController::class, 'detail'])->middleware('auth')->name('workspace.detail');
+  Route::get('/workspace/tree/{workspace:name}', [WorkspaceController::class, 'tree'])->middleware('auth')->name('workspace.tree');
+  Route::get('/workspace/search', [WorkspaceController::class, 'search'])->middleware('auth')->name('workspace.search');
   
   /**
    * ---------

@@ -1,13 +1,16 @@
 <script setup lang="ts">
-	import { ref, computed, onMounted } from "vue";
+	import { ref, computed, onMounted, toRaw, nextTick } from "vue";
 	import FolderTreeNode from "./FolderTreeNode.vue";
-	import { FileNode, countFiles, makeFileNodeByWorker } from "./folderUtils";
+	import { FileNode, countFiles, formatDate, makeFileNodeByWorker } from "./folderUtils";
 	import { DhFolderParam } from "../core/DhFile";
 	import { DhWorkspace } from "../core/DhWorkspace";
 	import { computeDiff, DiffResult } from "./compare";
 	import DiffSummary from "./DiffSummary.vue";
-	import GeneralPrompt from "../../components/Prompt/GeneralPrompt.vue";
-	import { route_manifest_search } from "../../helpers/listRoute";
+	import InputPrompt from "../../components/Prompt/InputPrompt.vue";
+	import {
+		route_manifest_search,
+		route_workspace_search,
+	} from "../../helpers/listRoute";
 	import AccumulativeProgress from "./AccumulativeProgress.vue";
 	import InlineNotification from "../../components/Notification/InlineNotification.vue";
 	import TargetProgress from "../../upload/progress/TargetProgress.vue";
@@ -21,10 +24,19 @@
 		ProgressUploadData,
 		UploadedData,
 	} from "../../upload/ChunkUploadManager";
+	import { ManifestObject } from "../core/DhManifest";
+	import {
+		ListValue,
+		ManifestModel,
+		MergeNode,
+		WorkspaceNode,
+	} from "./wsUtils";
+	import MergeNetworkGraph from "./MergeNetworkGraph.vue";
+	import ListPrompt from "../../components/Prompt/ListPrompt.vue";
 
 	const isAnalyzing = ref(false);
 	const folderRoot = ref<FileNode | null>(null);
-	const error = ref<string | null>(null);
+	const sourceManifest = ref<Record<string, string>>({});
 	const selectedDirName = ref<string>("");
 	const dhFolderParam = ref<DhFolderParam | null>(null);
 	const fileProcessedQty = ref(0);
@@ -44,7 +56,7 @@
 	// Action: pilih & scan folder
 	async function scanFolder(): Promise<void> {
 		isAnalyzing.value = true;
-		error.value = null;
+		// error.value = null;
 		folderRoot.value = null;
 		isDoneScanning.value = false;
 		isLoading.value = true;
@@ -68,10 +80,21 @@
 			isLoading.value = false;
 		} catch (err) {
 			if ((err as Error).name === "AbortError") {
-				error.value = "Pengguna membatalkan pemilihan folder.";
+				visibilityNotification.value = true;
+				resultNotification.value = {
+					message: "Pengguna membatalkan pemilihan folder",
+					title: "Scan folder",
+					type: "failed",
+				};
+				isLoading.value = false;
 			} else {
-				console.error("❌ Error:", err);
-				error.value = `Gagal: ${(err as Error).message}`;
+				visibilityNotification.value = true;
+				resultNotification.value = {
+					message: `❌ Error: ${(err as Error).message}`,
+					title: "Scan folder",
+					type: "failed",
+				};
+				isLoading.value = false;
 			}
 		} finally {
 			isAnalyzing.value = false;
@@ -119,7 +142,12 @@
 			const manifest = await workspace.getManifest();
 			return manifest;
 		}
-		error.value = "Failed to build manifest";
+		visibilityNotification.value = true;
+		resultNotification.value = {
+			message: "Failed to build manifest",
+			type: "failed",
+			title: "Build manifest",
+		};
 		throw new Error("Failed to build manifest");
 	}
 
@@ -127,16 +155,64 @@
 		isLoading.value = true;
 		fileProcessedQty.value = 1;
 		// await new Promise((r) => setTimeout(() => r(true),5000));
-		const manifest = (
-			await fetch(route_manifest_search(query), {
-				headers: {
-					"X-Requested-With": "XMLHttpRequest",
-				},
-			}).then((r) => r.json())
-		).manifests[0]; // perbaiki fungsi ini agar client bisa memilih
+		const result = await fetch(route_workspace_search(query), {
+			headers: {
+				"X-Requested-With": "XMLHttpRequest",
+			},
+		}).then((r) => r.json());
+		const workspaceNodes = result.workspaces; // perbaiki fungsi ini agar client bisa memilih
+		if (!workspaceNodes) {
+			if (!result.ok || result.message) {
+				throw new Error(result.message || result.data.message);
+			}
+		} else if (workspaceNodes.length < 1) {
+			throw new Error(`Source manifest with ${query} not found`);
+		}
+		// open prompt to select workspace
+		const workspaceNode = await openListPrompt<WorkspaceNode>(
+			workspaceNodes.map(
+				(node: WorkspaceNode) =>
+					({
+						id: node.created_at || node.name,
+						text: node.name,
+						value: node,
+					}) as ListValue
+			)
+		);
+		// open prompt to select manifest
+		const manifestObject = await openListPrompt<ManifestObject>(
+			workspaceNode.manifests.map(
+				(nodeManifest: ManifestModel) =>
+					({
+						id: nodeManifest.created_at,
+						text: `version = ${nodeManifest.content.version}, create at = ${formatDate(new Date(nodeManifest.created_at))}`,
+						value: (nodeManifest.content),
+					}) as ListValue
+			)
+		);
 		isLoading.value = false;
-		return manifest;
+		return manifestObject;
 	}
+	// async function fetchManifest(query: string) {
+	// 	isLoading.value = true;
+	// 	fileProcessedQty.value = 1;
+	// 	// await new Promise((r) => setTimeout(() => r(true),5000));
+	// 	const result = await fetch(route_manifest_search(query), {
+	// 		headers: {
+	// 			"X-Requested-With": "XMLHttpRequest",
+	// 		},
+	// 	}).then((r) => r.json());
+	// 	const manifests = result.manifests; // perbaiki fungsi ini agar client bisa memilih
+	// 	if (!manifests) {
+	// 		if (!result.ok || result.message) {
+	// 			throw new Error(result.message || result.data.message);
+	// 		}
+	// 	} else if (manifests.length < 1) {
+	// 		throw new Error(`Source manifest with ${query} not found`);
+	// 	}
+	// 	isLoading.value = false;
+	// 	return manifests[0];
+	// }
 
 	async function downloadManifest(query: string | null) {
 		const manifest = await (query ? fetchManifest(query) : buildManifest());
@@ -159,19 +235,34 @@
 		isDoneComparing.value = false;
 		isLoading.value = true;
 
-		showGeneralPrompt.value = true;
+		showInputPrompt.value = true;
 		// eg: hash:aa4d977d2bf8d2775ae3c2fc93e97d2455f4ff52f8b082b1e24f86bd7eb18ba7
 		// eg: label:v1.0.0
 		try {
-			querySearchManifest.value = await openPrompt();
+			querySearchManifest.value = await openInputPrompt();
 		} catch (err) {
+			console.error(err);
 			compared.value = true;
 			isDoneComparing.value = true;
 			isLoading.value = true;
 			return;
 		}
 		const targetManifest = await buildManifest();
-		const sourceManifest = await fetchManifest(querySearchManifest.value);
+		let sourceManifest: ManifestObject;
+		try {
+			sourceManifest = await fetchManifest(querySearchManifest.value);
+		} catch (err) {
+			console.error(err);
+			visibilityNotification.value = true;
+			resultNotification.value = {
+				message: (err as Error).message,
+				title: "Compare workspace",
+				type: "failed",
+			};
+			isDoneComparing.value = true;
+			isLoading.value = false;
+			throw err;
+		}
 		fileProcessedQty.value = 0;
 		const computeResult = await computeDiff(
 			sourceManifest.files,
@@ -193,24 +284,48 @@
 
 	/**
 	 * --------
-	 * PROMPT
+	 * INPUT PROMPT
 	 * --------
 	 */
-	const showGeneralPrompt = ref(false);
-	let promptActionResolve = (v: string) => {};
-	let promptActionReject = () => {};
-	async function openPrompt(): Promise<string> {
-		showGeneralPrompt.value = true;
+	const showInputPrompt = ref(false);
+	let inputPromptActionResolve = (v: any) => {};
+	let inputPromptActionReject = (err: string) => {};
+	async function openInputPrompt(): Promise<string> {
+		showInputPrompt.value = true;
 		return new Promise((resolve, reject) => {
-			promptActionResolve = resolve;
-			promptActionReject = reject;
+			inputPromptActionResolve = resolve;
+			inputPromptActionReject = reject;
 		});
 	}
-	async function onPromptResult(value: string | null) {
-		promptActionResolve(value ?? "");
-	}
-	async function onPromptCancel() {
-		promptActionReject();
+	const onPromptResult = async (value: any | null) => {
+    showListPrompt.value = false;
+    inputPromptActionResolve(value ?? "")
+  }
+	const onPromptCancel = async () => {
+    showListPrompt.value = false;
+    inputPromptActionReject("Cancelled")
+  };
+
+	/**
+	 * ------------
+	 * LIST PROMPT
+	 * ------------
+	 */
+	// {id: 'fufu', text: 'fufu juga', value: {aaa:'bbb'}},
+	// {id: 'fufu2', text: 'fufu2 juga', value: {aaa:'ccc'}},
+	// {id: 'fufu3', text: 'fufu3 juga', value: {aaa:'bbb'}},
+	// {id: 'fufu4', text: 'fufu4 juga', value: {aaa:'ccc'}},
+	// {id: 'fufu5', text: 'fufu5 juga', value: {aaa:'bbb'}},
+	// {id: 'fufu6', text: 'fufu6 juga', value: {aaa:'ccc'}},
+	const showListPrompt = ref(false);
+	const listPrompt = ref<ListValue[]>([]);
+	async function openListPrompt<TData>(listValue: ListValue[]): Promise<TData> {
+    listPrompt.value = listValue;
+    showListPrompt.value = true;
+    return (new Promise((resolve, reject) => {
+      inputPromptActionResolve = resolve;
+      inputPromptActionReject = reject;
+    }));
 	}
 
 	/**
@@ -371,7 +486,7 @@
 		try {
 			if (folderRoot.value) {
 				try {
-					querySearchManifest.value = await openPrompt();
+					querySearchManifest.value = await openInputPrompt();
 				} catch (err) {
 					visibilityNotification.value = true;
 					resultNotification.value = {
@@ -396,6 +511,53 @@
 			};
 		}
 	}
+
+	/**
+	 * --------------
+	 * NETWORK GRAPH
+	 * --------------
+	 */
+
+	const treeData = ref<MergeNode[]>([
+		// {
+		// 	id: "m1",
+		// 	label: "v1.0",
+		// 	merged_at: "2025-12-01T10:00:00Z",
+		// 	message: "Initial workspace setup",
+		// 	children: [
+		// 		{
+		// 			id: "m2",
+		// 			label: "v1.1",
+		// 			merged_at: "2025-12-02T11:00:00Z",
+		// 			message: "Add auth module",
+		// 			children: [
+		// 				{
+		// 					id: "m4",
+		// 					label: "fix",
+		// 					merged_at: "2025-12-03T09:00:00Z",
+		// 					message: "Fix login bug",
+		// 					children: [],
+		// 				},
+		// 			],
+		// 		},
+		// 		{
+		// 			id: "m3",
+		// 			label: "feat/login",
+		// 			merged_at: "2025-12-02T14:00:00Z",
+		// 			message: "WIP: New login UI",
+		// 			children: [
+		// 				{
+		// 					id: "m5",
+		// 					label: "v2.0",
+		// 					merged_at: "2025-12-04T16:00:00Z",
+		// 					message: "Major redesign",
+		// 					children: [],
+		// 				},
+		// 			],
+		// 		},
+		// 	],
+		// },
+	]);
 </script>
 
 <template>
@@ -452,28 +614,6 @@
 			>
 				Pilih & Analisis Folder
 			</button>
-		</div>
-
-		<!-- Error Alert -->
-		<div v-if="error" class="result failed mt-6">
-			<div class="result-icon">
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					width="24"
-					height="24"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-				>
-					<circle cx="12" cy="12" r="10" />
-					<line x1="12" y1="8" x2="12" y2="12" />
-					<line x1="12" y1="16" x2="12.01" y2="16" />
-				</svg>
-			</div>
-			<div class="result-content">
-				<h3 class="font-bold">Gagal Memindai Folder</h3>
-				<p>{{ error }}</p>
-			</div>
 		</div>
 
 		<!-- Tree View -->
@@ -569,9 +709,17 @@
 			/>
 		</div>
 
+		<!-- Network Graph -->
+		<div class="p-6 max-w-6xl mx-auto" v-if="treeData.length">
+			<h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+				Workspace Merge Network
+			</h1>
+			<MergeNetworkGraph :tree-data="treeData" />
+		</div>
+
 		<!-- Prompt -->
-		<GeneralPrompt
-			v-model="showGeneralPrompt"
+		<InputPrompt
+			v-model="showInputPrompt"
 			title="Get Manifest"
 			message="Masukkan id, hash, source, version, atau tag untuk mencari manifest:"
 			placeholder="label:v1.0.0"
@@ -579,6 +727,12 @@
 			cancel-text="Batal"
 			:default-value="querySearchManifest"
 			@result="onPromptResult"
+			@cancel="onPromptCancel"
+		/>
+		<ListPrompt
+			:visibility="showListPrompt"
+			:list="listPrompt"
+			@select="onPromptResult"
 			@cancel="onPromptCancel"
 		/>
 	</div>

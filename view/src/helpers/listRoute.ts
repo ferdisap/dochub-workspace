@@ -75,6 +75,7 @@ export function route_file_delete(hash: string, manifestId: string) {
  * -----------
  * MANIFEST ROUTE
  * -----------
+ * @deprecated, tidak ada lagi karena mencari manifest menggunakan route workpsace
  */
 export function route_manifest_search(query: string) {
   return `/dochub/manifest/search?query=${query}`; // GET
@@ -82,10 +83,9 @@ export function route_manifest_search(query: string) {
 
 /**
  * ---------------
- * WORKSPACE ROUTE
+ * WORKSPACE PUSH
  * ---------------
  */
-
 export function route_workspace_push_init() {
   return `/dochub/workspace/push/init`; // POST
 }
@@ -104,3 +104,12 @@ export function route_workspace_push_status(pushId:string) {
   return `/dochub/workspace/push/status/${pushId}`; // GET
 }
 // Route::get('/workspace/push/{id}/status', [WorkspacePushController::class, 'statusPush'])->middleware('auth')->name('dochub.upload.status');  
+
+/**
+ * -----------------
+ * WORKSPACE SEARCH
+ * -----------------
+ */
+export function route_workspace_search(query: string) {
+  return `/dochub/workspace/search?query=${query}`; // GET
+}

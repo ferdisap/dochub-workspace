@@ -7,6 +7,7 @@ use Dochub\Workspace\Manifest as WorkspaceManifest;
 use Dochub\Workspace\Services\ManifestLocalStorage;
 use Dochub\Workspace\Services\ManifestSourceParser;
 use Dochub\Workspace\Services\ManifestVersionParser;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Carbon;
@@ -157,6 +158,17 @@ class Manifest extends Model
     return $query->where('version', '<', $version);
   }
 
+  public function scopeWorkspace(Builder $query): void
+  {
+    // $query->where('from_id', '1');
+    // $query->whereNotNull('dochub_workspaces.deleted_at');
+    // $query->whereBelongsTo(Workspace::class, 'workspace');
+    // $query->whereBelongsTo('workspace', function(Builder $q) {
+    //   dd($q);
+    //   $q->whereNotNull('dochub_workspaces.deleted_at');
+    // });
+  }
+
   // Relasi
   public function merge()
   {
@@ -166,6 +178,11 @@ class Manifest extends Model
   public function user()
   {
     return $this->belongsTo(User::class, 'from_id');
+  }
+
+  public function workspace()
+  {
+    return $this->belongsTo(Workspace::class, 'workspace_id')->whereNull('deleted_at');
   }
 
   // Akses konten lengkap $this->content

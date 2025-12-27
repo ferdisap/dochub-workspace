@@ -59,9 +59,9 @@ export function countFiles(node: FileNode): number {
 //   return nodes;
 // }
 
-export async function loopFolder(node: FileNode, onFoundFile: (node:FileNode) => Promise<undefined>){
-  if(node.kind === "directory" && node.children){
-    for(const child of node.children){
+export async function loopFolder(node: FileNode, onFoundFile: (node: FileNode) => Promise<undefined>) {
+  if (node.kind === "directory" && node.children) {
+    for (const child of node.children) {
       await loopFolder(child, onFoundFile);
     }
   } else {
@@ -84,7 +84,7 @@ export async function scanDirectory(
 export async function makeFileNode(
   dirHandle: DhFolderParam,
   currentPath: string,
-  onNode?:(entry: DhFileParam) => void,
+  onNode?: (entry: DhFileParam) => void,
 ): Promise<FileNode[]> {
   const nodes: FileNode[] = [];
 
@@ -101,7 +101,7 @@ export async function makeFileNode(
           kind: 'file',
           handler,
         });
-        if(onNode) onNode(entry);
+        if (onNode) onNode(entry);
       } else if (entry.kind === 'directory') {
         const handler = entry as DhFolderParam;
         handler.relativePath = relativePath;
@@ -136,7 +136,7 @@ export async function makeFileNode(
 export function makeFileNodeByWorker(
   dirHandle: DhFolderParam,
   currentPath: string,
-  onNode?:(entry: DhFileParam) => void,
+  onNode?: (entry: DhFileParam) => void,
 ): Promise<{ worker: Worker | null, result: FileNode }> {
   return new Promise(async (resolve, reject) => {
     let result: FileNode;
@@ -180,7 +180,36 @@ export function makeFileNodeByWorker(
       resolve({
         worker: null,
         result
-      }) ;
+      });
     }
   })
+}
+
+export function formatDate(date: Date, timeZone:string = "Asia/Jakarta") {
+  // return date.toLocaleString(undefined, {
+  //   year: 'numeric',
+  //   month: 'long',
+  //   day: 'numeric',
+  //   hour: '2-digit',
+  //   minute: '2-digit'
+  // });
+  // Output in a US locale: "December 27, 2025, 11:23 AM"
+  // Output in a different locale (e.g., en-GB): "27 December 2025, 11:23"
+
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone,
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    second: 'numeric',
+    hour12: false // Use 24-hour format
+  };
+
+  // Create a formatter
+  const formatter = new Intl.DateTimeFormat('en-US', options);
+  // Format the date
+  return formatter.format(date) + ' (GMT+7)';
+
 }

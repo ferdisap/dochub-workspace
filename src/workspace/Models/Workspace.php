@@ -85,7 +85,7 @@ class Workspace extends Model
       'id',               // Foreign key pada tabel Merge (biasanya id) dalam context workspace atau PK di tabel merges (yang ditunjuk oleh result_merge_id)
       'id',               // Local key pada tabel Workspace
       'result_merge_id'   // Local key pada tabel Session (yang menyimpan ID Merge)
-    );
+    )->orderBy("dochub_merges.merged_at", 'asc'); // penting: urut waktu agar traversal akurat
   }
   /** latest and olderst merge */
   public function oldestMerge()

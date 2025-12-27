@@ -69,7 +69,7 @@
 	// Tutup dengan ESC
 	const handleKeydown = (e: KeyboardEvent) => {
 		if (e.key === "Escape" && visible.value) {
-			close();
+      cancel();
 		}
 	};
 
