@@ -1,16 +1,18 @@
 <script setup lang="ts">
 	import { ref, computed, onMounted, toRaw, nextTick } from "vue";
 	import FolderTreeNode from "./FolderTreeNode.vue";
-	import { FileNode, countFiles, formatDate, makeFileNodeByWorker } from "./folderUtils";
+	import {
+		FileNode,
+		countFiles,
+		formatDate,
+		makeFileNodeByWorker,
+	} from "./folderUtils";
 	import { DhFolderParam } from "../core/DhFile";
 	import { DhWorkspace } from "../core/DhWorkspace";
 	import { computeDiff, DiffResult } from "./compare";
 	import DiffSummary from "./DiffSummary.vue";
 	import InputPrompt from "../../components/Prompt/InputPrompt.vue";
-	import {
-		route_manifest_search,
-		route_workspace_search,
-	} from "../../helpers/listRoute";
+	import { route_workspace_search, route_workspace_tree } from "../../helpers/listRoute";
 	import AccumulativeProgress from "./AccumulativeProgress.vue";
 	import InlineNotification from "../../components/Notification/InlineNotification.vue";
 	import TargetProgress from "../../upload/progress/TargetProgress.vue";
@@ -28,7 +30,7 @@
 	import {
 		ListValue,
 		ManifestModel,
-		MergeNode,
+		TreeMergeNode,
 		WorkspaceNode,
 	} from "./wsUtils";
 	import MergeNetworkGraph from "./MergeNetworkGraph.vue";
@@ -151,9 +153,7 @@
 		throw new Error("Failed to build manifest");
 	}
 
-	async function fetchManifest(query: string) {
-		isLoading.value = true;
-		fileProcessedQty.value = 1;
+	async function searchWorkspace(query: string) {
 		// await new Promise((r) => setTimeout(() => r(true),5000));
 		const result = await fetch(route_workspace_search(query), {
 			headers: {
@@ -179,6 +179,15 @@
 					}) as ListValue
 			)
 		);
+		return workspaceNode;
+
+	}
+
+	async function fetchManifest(query: string) {
+		isLoading.value = true;
+		fileProcessedQty.value = 1;
+		// open prompt to select workspace
+		const workspaceNode = await searchWorkspace(query);
 		// open prompt to select manifest
 		const manifestObject = await openListPrompt<ManifestObject>(
 			workspaceNode.manifests.map(
@@ -186,7 +195,7 @@
 					({
 						id: nodeManifest.created_at,
 						text: `version = ${nodeManifest.content.version}, create at = ${formatDate(new Date(nodeManifest.created_at))}`,
-						value: (nodeManifest.content),
+						value: nodeManifest.content,
 					}) as ListValue
 			)
 		);
@@ -235,17 +244,13 @@
 		isDoneComparing.value = false;
 		isLoading.value = true;
 
-		showInputPrompt.value = true;
-		// eg: hash:aa4d977d2bf8d2775ae3c2fc93e97d2455f4ff52f8b082b1e24f86bd7eb18ba7
-		// eg: label:v1.0.0
 		try {
 			querySearchManifest.value = await openInputPrompt();
 		} catch (err) {
-			console.error(err);
 			compared.value = true;
 			isDoneComparing.value = true;
-			isLoading.value = true;
-			return;
+			isLoading.value = false;
+			throw err;
 		}
 		const targetManifest = await buildManifest();
 		let sourceManifest: ManifestObject;
@@ -298,13 +303,13 @@
 		});
 	}
 	const onPromptResult = async (value: any | null) => {
-    showListPrompt.value = false;
-    inputPromptActionResolve(value ?? "")
-  }
+		showListPrompt.value = false;
+		inputPromptActionResolve(value ?? "");
+	};
 	const onPromptCancel = async () => {
-    showListPrompt.value = false;
-    inputPromptActionReject("Cancelled")
-  };
+		showListPrompt.value = false;
+		inputPromptActionReject("Cancelled");
+	};
 
 	/**
 	 * ------------
@@ -320,12 +325,12 @@
 	const showListPrompt = ref(false);
 	const listPrompt = ref<ListValue[]>([]);
 	async function openListPrompt<TData>(listValue: ListValue[]): Promise<TData> {
-    listPrompt.value = listValue;
-    showListPrompt.value = true;
-    return (new Promise((resolve, reject) => {
-      inputPromptActionResolve = resolve;
-      inputPromptActionReject = reject;
-    }));
+		listPrompt.value = listValue;
+		showListPrompt.value = true;
+		return new Promise((resolve, reject) => {
+			inputPromptActionResolve = resolve;
+			inputPromptActionReject = reject;
+		});
 	}
 
 	/**
@@ -440,7 +445,7 @@
 		resultNotification.value = {
 			type: "completed",
 			title: "Push workspace",
-			message: data.message + `Push workspace takes time of ${duration}`,
+			message: data.message + `. Push workspace takes time of ${duration}`,
 			jobId: data.jobId,
 		};
 	};
@@ -517,47 +522,80 @@
 	 * NETWORK GRAPH
 	 * --------------
 	 */
+  // {
+  // 	id: "m1",
+  // 	label: "v1.0",
+  // 	merged_at: "2025-12-01T10:00:00Z",
+  // 	message: "Initial workspace setup",
+  // 	children: [
+  // 		{
+  // 			id: "m2",
+  // 			label: "v1.1",
+  // 			merged_at: "2025-12-02T11:00:00Z",
+  // 			message: "Add auth module",
+  // 			children: [
+  // 				{
+  // 					id: "m4",
+  // 					label: "fix",
+  // 					merged_at: "2025-12-03T09:00:00Z",
+  // 					message: "Fix login bug",
+  // 					children: [],
+  // 				},
+  // 			],
+  // 		},
+  // 		{
+  // 			id: "m3",
+  // 			label: "feat/login",
+  // 			merged_at: "2025-12-02T14:00:00Z",
+  // 			message: "WIP: New login UI",
+  // 			children: [
+  // 				{
+  // 					id: "m5",
+  // 					label: "v2.0",
+  // 					merged_at: "2025-12-04T16:00:00Z",
+  // 					message: "Major redesign",
+  // 					children: [],
+  // 				},
+  // 			],
+  // 		},
+  // 	],
+  // },
 
-	const treeData = ref<MergeNode[]>([
-		// {
-		// 	id: "m1",
-		// 	label: "v1.0",
-		// 	merged_at: "2025-12-01T10:00:00Z",
-		// 	message: "Initial workspace setup",
-		// 	children: [
-		// 		{
-		// 			id: "m2",
-		// 			label: "v1.1",
-		// 			merged_at: "2025-12-02T11:00:00Z",
-		// 			message: "Add auth module",
-		// 			children: [
-		// 				{
-		// 					id: "m4",
-		// 					label: "fix",
-		// 					merged_at: "2025-12-03T09:00:00Z",
-		// 					message: "Fix login bug",
-		// 					children: [],
-		// 				},
-		// 			],
-		// 		},
-		// 		{
-		// 			id: "m3",
-		// 			label: "feat/login",
-		// 			merged_at: "2025-12-02T14:00:00Z",
-		// 			message: "WIP: New login UI",
-		// 			children: [
-		// 				{
-		// 					id: "m5",
-		// 					label: "v2.0",
-		// 					merged_at: "2025-12-04T16:00:00Z",
-		// 					message: "Major redesign",
-		// 					children: [],
-		// 				},
-		// 			],
-		// 		},
-		// 	],
-		// },
+	const treeData = ref<TreeMergeNode[]>([
 	]);
+
+	async function drawNetworkWorkspace() {
+		isLoading.value = true;
+		try {
+			querySearchManifest.value = await openInputPrompt();
+		} catch (err) {
+			isLoading.value = false;
+			throw err;
+		}
+
+		let workspaceNode: WorkspaceNode;
+		try {
+			workspaceNode = await searchWorkspace(querySearchManifest.value);
+		} catch (err) {
+			visibilityNotification.value = true;
+			resultNotification.value = {
+				message: (err as Error).message,
+				title: "Draw network workspace",
+				type: "failed",
+			};
+			isLoading.value = false;
+			throw err;
+		}
+
+    const tree = (await fetch(route_workspace_tree(workspaceNode.name), {
+      headers: {
+				"X-Requested-With": "XMLHttpRequest",
+			},
+		}).then((r) => r.json())).tree as TreeMergeNode[];
+
+    treeData.value = tree;
+    isLoading.value = false;
+	}
 </script>
 
 <template>
@@ -665,6 +703,13 @@
 				>
 					Push
 				</button>
+				<button
+					@click="drawNetworkWorkspace"
+					:disabled="isAnalyzing"
+					class="ml-2 mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition flex items-center gap-2 disabled:opacity-50"
+				>
+					Network
+				</button>
 			</div>
 		</div>
 
@@ -700,7 +745,7 @@
 		<!-- Diff Summary -->
 		<div class="diff-summary mt-4" v-if="compared">
 			<h1 class="text-2xl font-bold text-slate-800 mb-6">
-				Perbandingan Workspace
+				Workspace Comparation
 			</h1>
 			<DiffSummary
 				:diff="diff"
@@ -720,7 +765,7 @@
 		<!-- Prompt -->
 		<InputPrompt
 			v-model="showInputPrompt"
-			title="Get Manifest"
+			title="Get Workspace"
 			message="Masukkan id, hash, source, version, atau tag untuk mencari manifest:"
 			placeholder="label:v1.0.0"
 			ok-text="Buat"

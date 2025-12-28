@@ -2,10 +2,11 @@
 	import { onMounted, onUnmounted, ref, watch } from "vue";
 	import * as d3 from "d3";
 	import * as dagreD3 from "dagre-d3";
-	import { MergeNode } from "./wsUtils";
+	import { TreeMergeNode } from "./wsUtils";
+import { formatDate } from "./folderUtils";
 
 	const props = defineProps<{
-		treeData: MergeNode[]; // root-level nodes (array)
+		treeData: TreeMergeNode[]; // root-level nodes (array)
 	}>();
 
 	const svgContainer = ref<HTMLElement | null>(null);
@@ -25,7 +26,7 @@
 			.append("svg")
 			.attr(
 				"class",
-				"w-full h-full bg-white dark:bg-gray-900 rounded-lg border dark:border-gray-700"
+				"w-full h-full bg-white dark:bg-gray-900 rounded-lg border border-slate-200 dark:border-gray-700 shadow-sm"
 			)
 			.attr("viewBox", "0 0 800 600")
 			.attr("preserveAspectRatio", "xMidYMid meet");
@@ -49,7 +50,7 @@
 			.setDefaultEdgeLabel(() => ({}));
 
 		// Helper: tambahkan node & edge rekursif
-		const addNode = (node: MergeNode) => {
+		const addNode = (node: TreeMergeNode) => {
 			g.setNode(node.id, {
 				label: node.label || node.id.slice(0, 8),
 				class: "merge-node",
@@ -81,8 +82,8 @@
 			// ... (lanjutkan seperti sebelumnya, ganti `data.id` → `nodeId`)
 			const fo = nodeSel
 				.append("foreignObject")
-				.attr("width", 120)
-				.attr("height", 40)
+				.attr("width", 150)
+				.attr("height", 80)
 				.attr("x", -60)
 				.attr("y", -20);
 
@@ -96,12 +97,12 @@
 					alert(`Merge ID: ${nodeId}`); // ✅ nodeId = string
 				});
 
-			div.append("div").text(nodeData.label || nodeId.slice(0, 8));
-			div.append("div").text(new Date(nodeData.merged_at).toLocaleDateString());
+			div.append("div").attr('class', 'w-full font-bold text-lg text-left ').text(nodeData.label || nodeId.slice(0, 8));
+			div.append("div").text(formatDate(new Date(nodeData.merged_at)));
 
 			// Tooltip
 			div
-				.on("mouseenter", function (event) {
+				.on("mouseenter", function (event:PointerEvent) {
 					if (!nodeData.message) return;
 					d3.select("body")
 						.append("div")
@@ -118,16 +119,16 @@
 									"<br/>"
 								)}${nodeData.message.length > 120 ? "…" : ""}`
 						)
-						.style("left", event.pageX + 10 + "px")
-						.style("top", event.pageY + 10 + "px")
+						.style("left", event.clientX + 10 + "px")
+						.style("top", event.clientY + 10 + "px")
 						.transition()
 						.duration(200)
 						.style("opacity", 1);
 				})
-				.on("mousemove", function (event) {
+				.on("mousemove", function (event:PointerEvent) {
 					d3.select("#tooltip")
-						.style("left", event.pageX + 10 + "px")
-						.style("top", event.pageY + 10 + "px");
+						.style("left", event.clientX + 10 + "px")
+						.style("top", event.clientY + 10 + "px");
 				})
 				.on("mouseleave", function () {
 					d3.select("#tooltip").remove();
@@ -167,8 +168,8 @@
 	// Helper: cari node by ID dari treeData
 	const findNodeById = (
 		id: string,
-		nodes: MergeNode[]
-	): MergeNode | undefined => {
+		nodes: TreeMergeNode[]
+	): TreeMergeNode | undefined => {
 		for (const node of nodes) {
 			if (node.id === id) return node;
 			const found = findNodeById(id, node.children);
@@ -210,50 +211,14 @@
 				class="p-2 text-gray-700 bg-white rounded shadow hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
 				aria-label="Zoom in"
 			>
-				<svg
-					class="w-4 h-4"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						stroke-width="2"
-						d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-					/>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						stroke-width="2"
-						d="M15 11h4"
-					/>
-				</svg>
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/></svg>
 			</button>
 			<button
 				@click="() => zoom?.scaleBy(svg as any, 0.8)"
 				class="p-2 text-gray-700 bg-white rounded shadow hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
 				aria-label="Zoom out"
 			>
-				<svg
-					class="w-4 h-4"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						stroke-width="2"
-						d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-					/>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						stroke-width="2"
-						d="M9 11h6"
-					/>
-				</svg>
+				<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="8" x2="14" y1="11" y2="11"/></svg>
 			</button>
 			<button
 				@click="

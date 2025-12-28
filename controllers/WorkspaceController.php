@@ -186,8 +186,13 @@ class WorkspaceController
     
   }
 
-  public function tree(Request $request, Workspace $workspace)
+  public function tree(Request $request, string $workspaceName)
   {
+    $workspace = Workspace::with('merges')
+      ->where('name', $workspaceName)
+      ->where('owner_id', $request->user()->id)
+      ->whereNull('deleted_at')
+      ->firstOrFail();
     $merges = $workspace->merges()->get(['dochub_merges.id', 'dochub_merges.prev_merge_id', 'merged_at', 'label', 'message']);
     $mergeMap = [];
     $childrenMap = []; // id → [child_id1, child_id2, ...]

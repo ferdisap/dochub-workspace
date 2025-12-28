@@ -1,11 +1,11 @@
 import { ManifestObject } from "../core/DhManifest";
 
-export interface MergeNode {
+export interface TreeMergeNode {
   id: string;
   label: string;
   merged_at: string; // ISO 8601
   message?: string | null;
-  children: MergeNode[];
+  children: TreeMergeNode[];
 }
 
 export interface ManifestModel {

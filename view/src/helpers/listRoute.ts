@@ -106,10 +106,13 @@ export function route_workspace_push_status(pushId:string) {
 // Route::get('/workspace/push/{id}/status', [WorkspacePushController::class, 'statusPush'])->middleware('auth')->name('dochub.upload.status');  
 
 /**
- * -----------------
- * WORKSPACE SEARCH
- * -----------------
+ * -------------------------
+ * WORKSPACE SEARCH & TREE
+ * -------------------------
  */
 export function route_workspace_search(query: string) {
   return `/dochub/workspace/search?query=${query}`; // GET
+}
+export function route_workspace_tree(name: string) {
+  return `/dochub/workspace/tree/${name}`; // GET
 }

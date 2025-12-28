@@ -93,18 +93,15 @@ class WorkspacePushController extends UploadNativeController
         $processedFiles[] = $file;
       }
     }
-    // if (count($processedFiles) < 1) return response()->json(['error' => 'No need file to be processed'], 500); // server error, karena tidak ada file yang perlu di processed
     $sourceManifestHash = $request->header('X-Source-Manifest-Hash');
     $workspaceModel = Workspace::whereHas('manifests', function(Builder $query) use($sourceManifestHash) {
       $query->where('hash_tree_sha256', $sourceManifestHash);
     })->where('owner_id', $request->user()->id)->count();
-    // dd($workspaceModel, $sourceManifestHash);
     if($workspaceModel < 1) return response()->json(['error' => 'There is no such source manifest'], 400); // forbidden
 
-    $sourceManifestModel = Manifest::where('hash_tree_sha256', $sourceManifestHash)->where('from_id', $request->user()->id)->first();
+    $sourceManifestModel = Manifest::with('merge')->where('hash_tree_sha256', $sourceManifestHash)->where('from_id', $request->user()->id)->firstOrFail();
     $sourceManifestArray = $sourceManifestModel?->content->toArray();
-
-
+    
     // save list file will processed
     $this->set_source_file_processed($targetManifestHash, $processedFiles);
     // save manifest to cache (File)
@@ -112,7 +109,10 @@ class WorkspacePushController extends UploadNativeController
     $this->set_source_manifest($sourceManifestHash, $sourceManifestArray);
     // set metadata
     $pushId = $this->get_id($targetManifestHash, $sourceManifestHash);
-    $this->set_metadata(["started_at" => now()->timestamp], $pushId);
+    $this->set_metadata([
+      "started_at" => now()->timestamp,
+      "prev_merge_id" => $sourceManifestModel->merge ? $sourceManifestModel->merge->id : null,
+    ], $pushId);
 
     return response()->json([
       "push_id" => $pushId,
@@ -292,7 +292,9 @@ class WorkspacePushController extends UploadNativeController
       // create merge
       $fillable = [
         'workspace_id' => $workspaceModel->id,
-        'manifest_hash' => $targetManifestArray['hash_tree_sha256'],
+        // 'manifest_hash' => $targetManifestArray['hash_tree_sha256'],
+        'manifest_hash' => $manifestModel->hash_tree_sha256,
+        'prev_merge_id' => $metadata['prev_merge_id'],
         'label' => $label,
         'merged_at' => now(),
         'message' => 'merge is done by pushing manifest ' . $targetManifestArray['hash_tree_sha256'],
